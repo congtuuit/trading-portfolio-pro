@@ -37,6 +37,8 @@ export async function fetchPricesMap(symbols) {
           "BB.lower", 
           "BB.upper", 
           "ATR", 
+          "high",
+          "low",
           "volume", 
           "average_volume_10d_calc"
         ],
@@ -54,7 +56,7 @@ export async function fetchPricesMap(symbols) {
     if (json.data && Array.isArray(json.data)) {
       json.data.forEach((item) => {
         const sym = item.s;
-        const [close, change, change_abs, rsi, ema200, bb_lower, bb_upper, atr, vol, vol_avg] = item.d;
+        const [close, change, change_abs, rsi, ema200, bb_lower, bb_upper, atr, high, low, vol, vol_avg] = item.d;
         result[sym] = {
           close: close || 0,
           change: change || 0,
@@ -64,6 +66,8 @@ export async function fetchPricesMap(symbols) {
           bb_lower: bb_lower || 0,
           bb_upper: bb_upper || 0,
           atr: atr || 0,
+          high: high || 0,
+          low: low || 0,
           vol: vol || 0,
           vol_avg: vol_avg || 0
         };

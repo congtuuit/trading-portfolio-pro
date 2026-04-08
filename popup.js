@@ -15,6 +15,7 @@ import {
   renderPortfolio,
   bindFormEvents,
   bindRolloverEvents,
+  bindT0Events,
   populateForm,
   bindSettingsEvents,
   bindAIEvents,
@@ -44,7 +45,8 @@ async function updatePricesAndRender() {
     currentPriceMap = {};
   }
   renderPortfolio(portfolio, handleDelete, handleEdit, currentPriceMap);
-  updateSummaryBar();
+  updateSummaryBar(portfolio, currentPriceMap);
+  checkProactiveAlerts();
 }
 
 /** Update the Total PnL indicator in the header */
@@ -125,6 +127,40 @@ async function handleDelete(id) {
   await savePortfolio(portfolio);
   renderPortfolio(portfolio, handleDelete, handleEdit, currentPriceMap);
   updatePricesAndRender();
+}
+
+/** T0 Strategy: Lower entry price by profit from mini-trade */
+async function handleT0(id, newEntry) {
+  const index = portfolio.findIndex((t) => t.id === id);
+  if (index >= 0) {
+    portfolio[index].entryPrice = newEntry;
+    await savePortfolio(portfolio);
+    renderPortfolio(portfolio, handleDelete, handleEdit, currentPriceMap);
+    updatePricesAndRender();
+  }
+}
+
+/** Check for critical stock conditions and alert user */
+function checkProactiveAlerts() {
+  portfolio.forEach(trade => {
+    const data = currentPriceMap[trade.symbol];
+    if (!data) return;
+
+    const isBuy = trade.type === "BUY";
+    const rsi = data.rsi;
+    const price = data.close / getDivisor(trade.symbol);
+    
+    // Condition 1: RSI Oversold
+    if (isBuy && rsi > 0 && rsi < 30) {
+      console.log(`[Proactive] ${trade.symbol} is Oversold (RSI: ${rsi})`);
+      // Could show a notification or UI highlight
+    }
+    
+    // Condition 2: Touching BB Lower
+    if (isBuy && price <= data.bb_lower / getDivisor(trade.symbol)) {
+      console.log(`[Proactive] ${trade.symbol} touching BB Lower`);
+    }
+  });
 }
 
 /** Chốt lời và cấn trừ vị thế */
@@ -258,6 +294,7 @@ async function init() {
 
   bindFormEvents(handleSave);
   bindRolloverEvents(handleRollover);
+  bindT0Events(handleT0);
 
   bindSettingsEvents(
     appSettings,

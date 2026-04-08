@@ -5,7 +5,8 @@
 
 import { fetchPricesMap } from "./price.js";
 import { calculatePnL } from "./pnl.js";
-import { getDivisor, escapeHTML } from "./utils.js";
+import { getDivisor, escapeHTML, calculateT0Scenario } from "./utils.js";
+import { suggestEntryExit, calculateFibLevels } from "./analysis.js";
 
 /** Format a number to 2 decimal places with thousands separators */
 function fmt(n) {
@@ -55,9 +56,48 @@ function getAnalysisHTML(sym, data, tradeType) {
   const stars = "⭐".repeat(score) + "☆".repeat(4 - score);
   const scoreColor = score >= 3 ? "var(--profit)" : score == 2 ? "orange" : "var(--loss)";
   
+  // Smart Analysis Integration
+  const divisor = getDivisor(sym);
+  const scaledData = {
+    ...data,
+    close: data.close / divisor,
+    high: data.high / divisor,
+    low: data.low / divisor,
+    bb_lower: data.bb_lower / divisor,
+    bb_upper: data.bb_upper / divisor
+  };
+  
+  const suggestion = suggestEntryExit(scaledData, tradeType);
+  const fibs = calculateFibLevels(scaledData.high, scaledData.low);
+
   return `
-    <strong style="color:${scoreColor}; font-size:12px;">🏆 Confluence Score: ${score}/4 ${stars}</strong><br/>
-    <div style="margin-top:4px; line-height: 1.4;">${reasons.join("<br/>")}</div>
+    <div style="border-bottom: 1px solid var(--border); padding-bottom: 8px; margin-bottom: 8px;">
+      <strong style="color:${scoreColor}; font-size:12px;">🏆 Confluence Score: ${score}/4 ${stars}</strong><br/>
+      <div style="margin-top:4px; line-height: 1.4; font-size:11px;">${reasons.join("<br/>")}</div>
+    </div>
+
+    <div style="background: rgba(255, 193, 7, 0.05); border: 1px solid rgba(255, 193, 7, 0.2); border-radius: 6px; padding: 10px; margin-bottom: 8px;">
+      <strong style="color: #ffc107; font-size: 11px;">🎯 Smart Suggestions</strong>
+      <div style="margin-top: 5px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+          <span>Vùng mua tối ưu:</span> <strong style="color:var(--profit);">${fmt(suggestion.entry)}</strong>
+        </div>
+        <div style="display:flex; justify-content:space-between;">
+          <span>Vùng bán tối ưu:</span> <strong style="color:var(--loss);">${fmt(suggestion.exit)}</strong>
+        </div>
+        <p style="font-size:10px; color:var(--text-muted); margin-top:6px; font-style:italic;">${suggestion.reason}</p>
+      </div>
+    </div>
+
+    <div style="font-size: 11px;">
+      <strong style="color:var(--text-primary);">📊 Fibonacci Levels (Intraday)</strong>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 4px;">
+        <div style="color:var(--text-muted);">Fib 0.236: <strong>${fmt(fibs[0.236])}</strong></div>
+        <div style="color:var(--text-muted);">Fib 0.382: <strong>${fmt(fibs[0.382])}</strong></div>
+        <div style="color:var(--text-muted);">Fib 0.500: <strong>${fmt(fibs[0.5])}</strong></div>
+        <div style="color:var(--text-muted);">Fib 0.618: <strong>${fmt(fibs[0.618])}</strong></div>
+      </div>
+    </div>
   `;
 }
 
@@ -67,11 +107,16 @@ let currentDCAPrice = null;
 let currentCloseTradeId = null;
 let currentRealizedPnl = 0;
 let handleRollover = null;
+let handleT0 = null;
 let lastAnalyzedSym = null;
 let lastAnalyzedData = null;
 
 export function bindRolloverEvents(cb) {
   handleRollover = cb;
+}
+
+export function bindT0Events(cb) {
+  handleT0 = cb;
 }
 
 export function bindAIEvents(onAskAI) {
@@ -491,15 +536,78 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
 }
 
 /**
- * Update the top summary bar with total PnL.
- * @param {number} totalPnl
+ * Update the top summary bar with total PnL and Health Score.
  */
-function updateSummaryBar(totalPnl) {
-  const el = document.getElementById("total-pnl");
-  if (!el) return;
-  const isProfit = totalPnl >= 0;
-  el.textContent = `Total PnL: ${fmtSigned(totalPnl)}`;
-  el.className = "total-pnl " + (isProfit ? "profit" : "loss");
+export function updateSummaryBar(portfolio, priceMap) {
+  let totalPnl = 0;
+  let totalValue = 0;
+  let winningTrades = 0;
+
+  portfolio.forEach((trade) => {
+    const data = priceMap[trade.symbol] || { close: trade.entryPrice };
+    const currentPrice = data.close / getDivisor(trade.symbol);
+    const isBuy = trade.type === "BUY";
+    const pnl = isBuy
+      ? (currentPrice - trade.entryPrice) * trade.quantity
+      : (trade.entryPrice - currentPrice) * trade.quantity;
+    
+    totalPnl += pnl;
+    totalValue += currentPrice * trade.quantity;
+    if (pnl > 0) winningTrades++;
+  });
+
+  const winRate = portfolio.length > 0 ? (winningTrades / portfolio.length) * 100 : 0;
+  const healthScore = winRate; // Simple health score based on win rate
+
+  const elPnl = document.getElementById("total-pnl");
+  const elHeader = document.querySelector(".header");
+
+  if (elPnl) {
+    elPnl.innerHTML = `
+      <div style="display:flex; flex-direction:column; align-items:flex-end;">
+        <span style="font-size:16px; font-weight:bold; color:${totalPnl >= 0 ? "var(--profit)" : "var(--loss)"};">
+          ${totalPnl >= 0 ? "+" : ""}${fmt(totalPnl)}
+        </span>
+        <div style="font-size:10px; color:var(--text-muted); display:flex; gap:8px;">
+          <span>Health: <strong style="color:${healthScore > 50 ? "var(--profit)" : "orange"};">${fmt(healthScore)}%</strong></span>
+          <span>Win Rate: <strong>${fmt(winRate)}%</strong></span>
+        </div>
+      </div>
+    `;
+  }
+
+  // Mini Allocation Bar integration
+  // We can inject a thin bar at the bottom of the header
+  let allocationBar = document.getElementById("allocation-bar");
+  if (!allocationBar) {
+    allocationBar = document.createElement("div");
+    allocationBar.id = "allocation-bar";
+    allocationBar.style.cssText = "height:3px; width:100%; position:absolute; bottom:0; left:0; display:flex;";
+    elHeader.style.position = "relative";
+    elHeader.appendChild(allocationBar);
+  }
+
+  if (portfolio.length > 0) {
+    let barHtml = "";
+    const symbols = [...new Set(portfolio.map(t => t.symbol))];
+    const colors = ["#26a69a", "#ef5350", "#2196f3", "#ff9800", "#9c27b0", "#00bcd4"];
+    
+    let currentTotalValue = 0;
+    const weights = symbols.map((s, i) => {
+      const val = portfolio.filter(t => t.symbol === s).reduce((acc, t) => {
+        const p = (priceMap[s]?.close || 0) / getDivisor(s);
+        return acc + (p * t.quantity);
+      }, 0);
+      currentTotalValue += val;
+      return { sym: s, val, color: colors[i % colors.length] };
+    });
+
+    weights.forEach(w => {
+      const pct = (w.val / currentTotalValue) * 100;
+      barHtml += `<div title="${w.sym}: ${fmt(pct)}%" style="width:${pct}%; background:${w.color}; height:100%;"></div>`;
+    });
+    allocationBar.innerHTML = barHtml;
+  }
 }
 
 /**
@@ -605,31 +713,44 @@ export function bindFormEvents(onSave) {
       }
 
       // T0 "Thay nước từ từ" strategy breakdown
-      const chunkBounces = [5, 10, 15, 20]; // Percentages
+      const chunkBounces = [2, 3, 5, 7]; // Percentages (Lowered for more realistic T0)
       let t0Html = `<div style="margin-top:12px; padding-top:12px; border-top:1px dashed var(--border);">`;
       t0Html += `<strong style="font-size:12px; color:var(--text-primary);">🌊 Chiến lược "Thay nước" (Lướt lô nhỏ)</strong><br/>`;
       t0Html += `<div style="color:var(--text-muted); font-size:11px; margin-bottom:8px;">Kế hoạch chốt lời nhanh chỉ riêng phần <strong>${fmt(addQty)}</strong> units vừa gom:</div>`;
 
+      let bestScenario = null;
+
       chunkBounces.forEach(pct => {
-         if (isBuy) {
-           const targetPrice = currentDCAPrice * (1 + pct/100);
-           const chunkProfit = addQty * (targetPrice - currentDCAPrice);
-           t0Html += `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">
-             <span>Giá hồi <strong>+${pct}%</strong> (lên ${fmt(targetPrice)})</span>
-             <span style="color:var(--profit);">Bỏ túi: +${fmt(chunkProfit)}</span>
-           </div>`;
-         } else {
-           const targetPrice = currentDCAPrice * (1 - pct/100);
-           const chunkProfit = addQty * (currentDCAPrice - targetPrice);
-           t0Html += `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">
-             <span>Giá sập <strong>-${pct}%</strong> (xuống ${fmt(targetPrice)})</span>
-             <span style="color:var(--profit);">Bỏ túi: +${fmt(chunkProfit)}</span>
-           </div>`;
-         }
+          const scenario = calculateT0Scenario(currentDCATrade, currentDCAPrice, pct, addQty);
+          if (pct === 3) bestScenario = scenario; // Default recommended
+
+          t0Html += `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">
+            <span>Giá hồi <strong>+${pct}%</strong> (lên ${fmt(scenario.targetExit)})</span>
+            <span style="color:var(--profit);">Bỏ túi: +${fmt(scenario.totalProfit)}</span>
+          </div>`;
       });
       t0Html += `</div>`;
 
       document.getElementById("dca-result").innerHTML += t0Html;
+
+      // Show T0 confirmation area with the 3% scenario as preview
+      const t0Area = document.getElementById("t0-action-area");
+      const t0Details = document.getElementById("t0-details");
+      if (t0Area && bestScenario) {
+        t0Area.style.display = "block";
+        t0Details.innerHTML = `Giả định lướt <strong>${fmt(addQty)}</strong> units với lợi nhuận 3% (+${fmt(bestScenario.totalProfit)}), giá vốn mã gốc sẽ hạ từ ${fmt(currentDCATrade.entryPrice)} xuống <strong>${fmt(bestScenario.newEntry)}</strong>.`;
+        
+        // Setup the one-time confirm event
+        const btnT0 = document.getElementById("btn-confirm-t0");
+        btnT0.onclick = async () => {
+           if (handleT0) {
+             btnT0.textContent = "⏳...";
+             await handleT0(currentDCATrade.id, bestScenario.newEntry, bestScenario.totalProfit);
+             document.getElementById("modal-dca").style.display = "none";
+             btnT0.textContent = "Xác nhận đã lướt T0 thành công";
+           }
+        };
+      }
     });
   }
 

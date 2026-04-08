@@ -38,9 +38,14 @@ async function queryGemini(messages, model, apiKey) {
 
   const payload = {
     contents: contents,
+    system_instruction: {
+      parts: {
+        text: "Bạn là một trợ lý giao dịch tài chính chuyên nghiệp, am hiểu chiến thuật lướt T0 (Thay nước) và phân tích kỹ thuật (Fibonacci, S/R). Luôn trả lời ngắn gọn, quyết đoán và có dữ liệu."
+      }
+    },
     generationConfig: {
-      temperature: 0.2, // Low temp for more analytical, less creative responses
-      maxOutputTokens: 600,
+      temperature: 0.1, // Lowered for consistency
+      maxOutputTokens: 800,
     },
   };
 
