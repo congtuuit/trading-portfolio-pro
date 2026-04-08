@@ -1,0 +1,42 @@
+{
+  "meta": {
+    "schema_version": "1.1.0",
+    "awf_version": "3.3.0",
+    "last_updated": "2026-04-08T18:20:00Z"
+  },
+  "project": {
+    "name": "Trading Portfolio Pro",
+    "type": "Chrome Extension",
+    "status": "v2.0 - Implemented",
+    "description": "Quản lý danh mục đầu tư tích hợp TradingView và Trợ lý AI."
+  },
+  "tech_stack": {
+    "frontend": "Vanilla JS, CSS (Glassmorphism), HTML5",
+    "backend": "None (Client-side extension)",
+    "storage": "chrome.storage.local",
+    "ai": "Google Gemini (1.5 Flash), OpenAI API"
+  },
+  "features": [
+    {
+      "name": "Thay nước T0 (T0 Strategy)",
+      "description": "Lướt hạ giá vốn cho các vị thế đang lỗ dựa trên nhịp hồi kỹ thuật."
+    },
+    {
+      "name": "Smart Entry/Exit",
+      "description": "Gợi ý điểm mua/bán tối ưu bằng Fibonacci và Bollinger Bands."
+    },
+    {
+      "name": "Proactive AI Monitoring",
+      "description": "AI quét danh mục và cảnh báo các mã rơi vào vùng quá bán/quá mua."
+    },
+    {
+      "name": "Portfolio Health Score",
+      "description": "Đánh giá sức khỏe danh mục dựa trên tỉ lệ thắng (Win Rate)."
+    }
+  ],
+  "conventions": [
+    "Security-First: Dùng textContent hoặc escapeHTML thay cho innerHTML.",
+    "Modular: Chia nhỏ logic vào utils.js, analysis.js, price.js.",
+    "Divisor: Mọi mã HOSE/HNX/UPCOM phải chia cho 1000."
+  ]
+}
