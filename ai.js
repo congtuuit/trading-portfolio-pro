@@ -71,7 +71,7 @@ async function queryGemini(messages, model, apiKey) {
 
 async function queryOpenAI(messagesArr, model, apiKey) {
   const url = "https://api.openai.com/v1/chat/completions";
-  
+
   const mappedMessages = messagesArr.map(m => ({
     role: m.role,
     content: m.text

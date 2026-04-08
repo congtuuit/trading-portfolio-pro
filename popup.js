@@ -10,6 +10,7 @@ import {
   getSettings,
   saveSettings,
 } from "./storage.js";
+import { getDivisor } from "./utils.js";
 import {
   renderPortfolio,
   bindFormEvents,
@@ -53,15 +54,7 @@ function updateSummaryBar() {
     const priceData = currentPriceMap[trade.symbol] || {
       close: trade.entryPrice,
     };
-    let divisor = 1;
-    if (
-      trade.symbol.startsWith("HOSE:") ||
-      trade.symbol.startsWith("HNX:") ||
-      trade.symbol.startsWith("UPCOM:")
-    ) {
-      divisor = 1000;
-    }
-    const currentPrice = priceData.close / divisor;
+    const currentPrice = priceData.close / getDivisor(trade.symbol);
     let pnl = 0;
     if (trade.type === "BUY") {
       pnl = (currentPrice - trade.entryPrice) * trade.quantity;
@@ -223,6 +216,16 @@ function initExportImport() {
           try {
             const importedData = JSON.parse(event.target.result);
             if (Array.isArray(importedData)) {
+              // Basic validation of fields
+              const isValid = importedData.every(t => 
+                t.symbol && t.type && t.entryPrice && t.quantity
+              );
+              
+              if (!isValid) {
+                alert("Dữ liệu không đúng cấu trúc (Thiếu Mã, Loại lệnh, Giá hoặc Số lượng).");
+                return;
+              }
+
               portfolio = importedData;
               await savePortfolio(portfolio);
               renderPortfolio(

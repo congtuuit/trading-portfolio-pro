@@ -5,6 +5,7 @@
 
 import { fetchPricesMap } from "./price.js";
 import { calculatePnL } from "./pnl.js";
+import { getDivisor, escapeHTML } from "./utils.js";
 
 /** Format a number to 2 decimal places with thousands separators */
 function fmt(n) {
@@ -317,7 +318,7 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
       change: 0,
       change_abs: 0,
     };
-    const currentPrice = priceData.close / 1000;
+    const currentPrice = priceData.close / getDivisor(trade.symbol);
     const { pnl, pct } = calculatePnL(trade, currentPrice);
     totalPnl += pnl;
 
@@ -336,13 +337,16 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
 
     const slText = trade.stopLoss ? fmt(trade.stopLoss) : "—";
     const tpText = trade.takeProfit ? fmt(trade.takeProfit) : "—";
-    const noteText = trade.note
-      ? `<div class="trade-note">💬 ${trade.note}</div>`
+// Sanitize user-controllable strings for HTML
+    const safeSymbol = escapeHTML(trade.symbol);
+    const safeNote = trade.note ? escapeHTML(trade.note) : "";
+    const noteHtml = safeNote
+      ? `<div class="trade-note">💬 ${safeNote}</div>`
       : "";
 
     const html = `
       <div class="trade-header">
-        <span class="trade-symbol">${trade.symbol}${trendIndicator} <span class="btn-info" data-id="${trade.id}" style="cursor:pointer;font-size:12px;margin-left:4px;filter:grayscale(100%);" title="Xem phân tích kỹ thuật">ℹ️</span></span>
+        <span class="trade-symbol">${safeSymbol}${trendIndicator} <span class="btn-info" data-id="${trade.id}" style="cursor:pointer;font-size:12px;margin-left:4px;filter:grayscale(100%);" title="Xem phân tích kỹ thuật">ℹ️</span></span>
         <span class="badge ${typeClass}">${trade.type}</span>
         <span class="trade-qty">×${fmt(parseFloat(trade.quantity))}</span>
       </div>
@@ -352,13 +356,13 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
         <span class="price-item">SL <strong>${slText}</strong></span>
         <span class="price-item">TP <strong>${tpText}</strong></span>
       </div>
-      ${noteText}
+      ${noteHtml}
       <div class="trade-footer">
         <div class="pnl ${pnlClass}">
           ${fmtSigned(pnl)} <span class="pnl-pct">(${fmtSigned(pct)}%)</span>
         </div>
       <div class="trade-actions">
-        <button class="btn btn-view" data-symbol="${trade.symbol}" title="View on TradingView">📈 View</button>
+        <button class="btn btn-view" data-symbol="${safeSymbol}" title="View on TradingView">📈 View</button>
         <button class="btn btn-close-trade" data-id="${trade.id}" style="background:#089981; color:white;" title="Chốt Lời & Cấn Trừ Hạ Giá Vốn">💰 Chốt</button>
         <button class="btn btn-dca" data-id="${trade.id}" style="background:#5264b3; color:white;" title="DCA / Gỡ Lỗ">🧮 DCA</button>
         <button class="btn btn-edit"   data-id="${trade.id}" style="background:var(--bg-input); color:var(--text-primary);">✏️ Edit</button>
@@ -403,10 +407,7 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
       if (!trade) return;
       
       const priceData = priceMap[trade.symbol] || { close: trade.entryPrice };
-      let divisor = 1;
-      if (trade.symbol.startsWith("HOSE:") || trade.symbol.startsWith("HNX:") || trade.symbol.startsWith("UPCOM:")) {
-        divisor = 1000;
-      }
+      const divisor = getDivisor(trade.symbol);
       
       currentDCATrade = trade;
       currentDCAPrice = priceData.close / divisor;
@@ -437,12 +438,7 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
       if (!trade) return;
       
       const priceData = priceMap[trade.symbol] || { close: trade.entryPrice };
-      let divisor = 1;
-      if (trade.symbol.startsWith("HOSE:") || trade.symbol.startsWith("HNX:") || trade.symbol.startsWith("UPCOM:")) {
-        divisor = 1000;
-      }
-      
-      const currentPrice = priceData.close / divisor;
+      const currentPrice = priceData.close / getDivisor(trade.symbol);
       const { pnl } = calculatePnL(trade, currentPrice);
       
       currentCloseTradeId = id;
@@ -656,10 +652,7 @@ export function bindFormEvents(onSave) {
           return;
         }
 
-        let divisor = 1;
-        if (sym.startsWith("HOSE:") || sym.startsWith("HNX:") || sym.startsWith("UPCOM:")) {
-          divisor = 1000;
-        }
+        const divisor = getDivisor(sym);
 
         const currentPrice = data.close / divisor;
         const atr = (data.atr || 0) / divisor;
