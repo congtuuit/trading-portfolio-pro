@@ -255,6 +255,12 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels) {
       document.getElementById("inp-ai-provider").value = settings.aiProvider || "gemini";
       document.getElementById("inp-ai-model").value = settings.aiModel || "";
       document.getElementById("inp-api-key").value = settings.apiKey || "";
+      
+      // Load Telegram settings
+      document.getElementById("inp-tg-token").value = settings.tgToken || "";
+      document.getElementById("inp-tg-chatid").value = settings.tgChatId || "";
+      document.getElementById("chk-tg-enabled").checked = !!settings.tgEnabled;
+
       const msgEl = document.getElementById("msg-api-key");
       if (msgEl) msgEl.innerHTML = `Lấy Key tại: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent-blue);">Google AI Studio</a> hoặc <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent-blue);">OpenAI</a>`;
       modalSettings.style.display = "flex";
@@ -264,6 +270,33 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels) {
     modalSettings.addEventListener("click", (e) => {
       if (e.target === modalSettings) modalSettings.style.display = "none";
     });
+
+    const btnTestTg = document.getElementById("btn-test-tg");
+    if (btnTestTg) {
+      btnTestTg.addEventListener("click", async () => {
+        const token = document.getElementById("inp-tg-token").value.trim();
+        const chatId = document.getElementById("inp-tg-chatid").value.trim();
+        if (!token || !chatId) {
+          alert("Vui lòng nhập Token và Chat ID trước khi test!");
+          return;
+        }
+        btnTestTg.textContent = "⏳...";
+        try {
+          const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: chatId, text: "🔔 Kết nối Trading Portfolio Pro thành công! Tôi sẽ báo động cho bạn tại đây." })
+          });
+          const data = await resp.json();
+          if (data.ok) alert("✅ Đã gửi tin nhắn test thành công!");
+          else alert("❌ Lỗi Telegram: " + data.description);
+        } catch (e) {
+          alert("❌ Lỗi kết nối: " + e.message);
+        } finally {
+          btnTestTg.textContent = "Test 🔔";
+        }
+      });
+    }
     
     if (btnFetchModels && onFetchModels) {
       btnFetchModels.addEventListener("click", async (e) => {
@@ -311,9 +344,16 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels) {
       const provider = document.getElementById("inp-ai-provider").value;
       const model = document.getElementById("inp-ai-model").value.trim();
       const key = document.getElementById("inp-api-key").value.trim();
+
       settings.aiProvider = provider;
       settings.aiModel = model;
       settings.apiKey = key;
+
+      // Save Telegram settings
+      settings.tgToken = document.getElementById("inp-tg-token").value.trim();
+      settings.tgChatId = document.getElementById("inp-tg-chatid").value.trim();
+      settings.tgEnabled = document.getElementById("chk-tg-enabled").checked;
+
       await onSaveSettings(settings);
       modalSettings.style.display = "none";
     });

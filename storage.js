@@ -34,7 +34,13 @@ const SETTINGS_KEY = "tpp_settings";
 export async function getSettings() {
   return new Promise((resolve) => {
     chrome.storage.local.get([SETTINGS_KEY], (result) => {
-      resolve(result[SETTINGS_KEY] || { aiProvider: 'gemini', apiKey: '' });
+      resolve(result[SETTINGS_KEY] || { 
+        aiProvider: 'gemini', 
+        apiKey: '',
+        tgToken: '',
+        tgChatId: '',
+        tgEnabled: false
+      });
     });
   });
 }

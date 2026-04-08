@@ -7,8 +7,15 @@
     "default_popup": "popup.html",
     "default_title": "Trading Portfolio Pro"
   },
-  "permissions": ["storage", "tabs"],
-  "host_permissions": ["*://*.tradingview.com/*"],
+  "permissions": ["storage", "tabs", "alarms", "notifications"],
+  "host_permissions": [
+    "*://*.tradingview.com/*",
+    "https://api.telegram.org/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
   "icons": {
     "16": "icons/tradingview-logo.png",
     "48": "icons/tradingview-logo.png",

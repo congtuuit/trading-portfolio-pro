@@ -215,6 +215,25 @@
           <datalist id="ai-models-list"></datalist>
           <i style="color:var(--text-muted); font-size:11px; display:block; margin-top:4px;">Mặc định: gemini-2.5-flash (Gemini) hoặc gpt-4o-mini (OpenAI)</i>
         </div>
+
+        <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
+          <h4 style="margin:0 0 8px 0; font-size:12px; color:var(--text-primary);">🤖 Telegram Notification (Broker)</h4>
+          <div class="field">
+            <label>Bot Token:</label>
+            <input type="password" id="inp-tg-token" class="full-width" style="padding:8px;" placeholder="Bot Token từ @BotFather..." />
+          </div>
+          <div class="field" style="margin-top:8px;">
+            <label>Chat ID:</label>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="inp-tg-chatid" class="full-width" style="padding:8px;" placeholder="ID từ @userinfobot..." />
+              <button id="btn-test-tg" class="btn" style="background:var(--bg-hover); color:var(--text-primary); border:1px solid var(--border); padding:8px; white-space:nowrap;">Test 🔔</button>
+            </div>
+          </div>
+          <div style="margin-top:12px; display:flex; align-items:center; gap:8px;">
+            <input type="checkbox" id="chk-tg-enabled" style="cursor:pointer;" />
+            <label for="chk-tg-enabled" style="cursor:pointer; font-weight:normal;">Bật thông báo đa nền tảng (Telegram)</label>
+          </div>
+        </div>
         
         <div style="margin-top:20px; display:flex; gap:8px; justify-content:flex-end;">
           <button id="btn-save-settings" class="btn" style="background:var(--accent-blue); color:white; padding:8px 16px; font-weight:bold;">Lưu Cấu Hình</button>
