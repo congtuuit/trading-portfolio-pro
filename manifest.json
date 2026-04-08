@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Trading Portfolio Pro",
+  "version": "1.0.0",
+  "description": "Track your trades and calculate real-time PnL with TradingView integration.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Trading Portfolio Pro"
+  },
+  "permissions": ["storage", "tabs"],
+  "host_permissions": ["*://*.tradingview.com/*"],
+  "icons": {
+    "16": "icons/tradingview-logo.png",
+    "48": "icons/tradingview-logo.png",
+    "128": "icons/tradingview-logo.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.tradingview.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_end"
+    }
+  ]
+}
