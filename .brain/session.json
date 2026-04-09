@@ -1,40 +1,56 @@
 {
-  "updated_at": "2026-04-09T08:09:30Z",
+  "updated_at": "2026-04-09T16:55:00Z",
   "working_on": {
-    "feature": "Bug Fixing & AI Optimization",
-    "task": "Fix Gemini text truncation and request structure",
+    "feature": "Floating AI Widget",
+    "task": "DCA and Close Modal Integration",
     "status": "completed",
-    "files": [
-      "ai.js",
-      "popup.js",
-      "background.js"
-    ],
-    "notes": "Đã sửa lỗi Gemini bị cụt chữ bằng cách chuẩn hóa cấu trúc request và gộp các phần của câu trả lời."
+    "files": ["content.js", "ui.js", "background.js", "manifest.json"],
+    "blockers": [],
+    "notes": "Floating widget successfully injects into all pages via Shadow DOM. CORS bypass implemented using background service worker."
   },
+  "pending_tasks": [
+    { "task": "Cross-platform notifications enhancements", "priority": "low", "notes": "Extend Telegram monitoring logic" }
+  ],
   "recent_changes": [
-    {
-      "timestamp": "2026-04-09T08:09:00Z",
-      "type": "fix",
-      "description": "Sửa lỗi Gemini bị ngắt quãng (truncation) và cập nhật tên model mặc định chính xác."
+    { 
+      "timestamp": "2026-04-09T16:10:00Z", 
+      "type": "feature", 
+      "description": "Injected #modal-dca and #modal-close into Shadow DOM to fix Uncaught TypeError inside widget. Bound click events directly in content.js.", 
+      "files": ["content.js"] 
     },
-    {
-      "timestamp": "2026-04-09T08:08:00Z",
-      "type": "user_edit",
-      "description": "User điều chỉnh khoảng thời gian refresh UI lên 30s và căn chỉnh lại spacing code."
+    { 
+      "timestamp": "2026-04-09T16:04:00Z", 
+      "type": "fix", 
+      "description": "Resolved CORS policy block by delegating fetchPricesMap to background.js when executed in content script context.", 
+      "files": ["price.js", "background.js"] 
+    },
+    { 
+      "timestamp": "2026-04-09T08:54:00Z", 
+      "type": "feature", 
+      "description": "Created and styled global floating widget using content.js and Shadow DOM.", 
+      "files": ["content.js", "manifest.json", "style.css"] 
     }
   ],
   "errors_encountered": [
-    {
-      "error": "Gemini text truncated (stops after a few words)",
-      "solution": "Gộp tất cả các 'parts' trong phản hồi của Gemini và sửa lại cấu trúc system_instruction thành mảng.",
-      "resolved": true,
-      "file": "ai.js"
+    { 
+      "error": "Failed to fetch style.css in strict CSP environments", 
+      "solution": "Replaced fetch(cssUrl) with a standard <link rel=\"stylesheet\"> injected into Shadow DOM", 
+      "resolved": true 
+    },
+    { 
+      "error": "CORS policy block for TradingView scanner API from Gemini page", 
+      "solution": "Implemented a message passing proxy via background.js to fetch prices from content script", 
+      "resolved": true 
+    },
+    { 
+      "error": "Cannot set properties of null (setting 'innerHTML') at dca-title", 
+      "solution": "Injected DCA and Close Modal HTML directly into widgetHtml inside content.js", 
+      "resolved": true 
     }
   ],
   "decisions_made": [
-    {
-      "decision": "Dùng gemini-1.5-flash làm mặc định",
-      "reason": "Model ổn định và nhanh hơn so với các bản exp hoặc tên sai (2.5)."
-    }
+    { "decision": "Use Shadow DOM for the floating widget", "reason": "Ensure perfect CSS isolation so extension styles don't conflict with host websites." },
+    { "decision": "Proxy API calls through background.js", "reason": "Bypass host website CORS restrictions for content scripts." },
+    { "decision": "Inline minimalist Modals in content.js", "reason": "Avoid pulling the heavy popup.js UI bindings, keep the widget quick and simple while maintaining core interaction." }
   ]
 }
