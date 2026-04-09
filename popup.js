@@ -25,6 +25,7 @@ import {
   appendChatMessage,
   openChatPanel,
   removeTypingIndicator,
+  updateSummaryBar,
 } from "./ui.js";
 import { fetchPricesMap } from "./price.js";
 import { queryAI, fetchModels } from "./ai.js";
@@ -49,34 +50,7 @@ async function updatePricesAndRender() {
   checkProactiveAlerts();
 }
 
-/** Update the Total PnL indicator in the header */
-function updateSummaryBar() {
-  let totalPnl = 0;
-  portfolio.forEach((trade) => {
-    const priceData = currentPriceMap[trade.symbol] || {
-      close: trade.entryPrice,
-    };
-    const currentPrice = priceData.close / getDivisor(trade.symbol);
-    let pnl = 0;
-    if (trade.type === "BUY") {
-      pnl = (currentPrice - trade.entryPrice) * trade.quantity;
-    } else {
-      pnl = (trade.entryPrice - currentPrice) * trade.quantity;
-    }
-    totalPnl += pnl;
-  });
 
-  const pnlEl = document.getElementById("total-pnl");
-  if (!pnlEl) return;
-  const pnlFmt =
-    (totalPnl >= 0 ? "+" : "") +
-    totalPnl.toLocaleString("en-US", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  pnlEl.textContent = `Total PnL: ${pnlFmt}`;
-  pnlEl.className = `total-pnl ${totalPnl >= 0 ? "profit" : "loss"}`;
-}
 
 /** Generate a unique ID for each trade */
 function uid() {

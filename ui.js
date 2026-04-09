@@ -380,7 +380,7 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
         <p>No trades yet.</p>
         <p class="empty-sub">Add your first position above.</p>
       </div>`;
-    updateSummaryBar(0);
+    updateSummaryBar(portfolio, priceMap);
     return;
   }
 
@@ -465,7 +465,7 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
     card.innerHTML = html;
   });
 
-  updateSummaryBar(totalPnl);
+  updateSummaryBar(portfolio, priceMap);
 
   // Bind info buttons
   document.querySelectorAll(".btn-info").forEach((btn) => {
