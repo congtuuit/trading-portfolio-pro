@@ -18,7 +18,7 @@ export async function queryAI(inputData, settings) {
   }
 
   if (settings.aiProvider === "gemini") {
-    const model = settings.aiModel || "gemini-2.5-flash";
+    const model = settings.aiModel || "gemini-1.5-flash";
     return await queryGemini(messages, model, settings.apiKey);
   } else if (settings.aiProvider === "openai") {
     const model = settings.aiModel || "gpt-4o-mini";
@@ -39,13 +39,15 @@ async function queryGemini(messages, model, apiKey) {
   const payload = {
     contents: contents,
     system_instruction: {
-      parts: {
-        text: "Bạn là một trợ lý giao dịch tài chính chuyên nghiệp, am hiểu chiến thuật lướt T0 (Thay nước) và phân tích kỹ thuật (Fibonacci, S/R). Luôn trả lời ngắn gọn, quyết đoán và có dữ liệu."
-      }
+      parts: [
+        { text: "Bạn là một trợ lý giao dịch tài chính chuyên nghiệp, am hiểu chiến thuật lướt T0 (Thay nước) và phân tích kỹ thuật (Fibonacci, S/R). Luôn trả lời súc tích, quyết đoán, đủ ý và có dữ liệu dẫn chứng." }
+      ]
     },
     generationConfig: {
-      temperature: 0.1, // Lowered for consistency
-      maxOutputTokens: 800,
+      temperature: 0.1,
+      maxOutputTokens: 4096,
+      topP: 0.8,
+      topK: 40
     },
   };
 
@@ -68,7 +70,8 @@ async function queryGemini(messages, model, apiKey) {
     data.candidates[0].content &&
     data.candidates[0].content.parts
   ) {
-    return data.candidates[0].content.parts[0].text;
+    // Join all parts to avoid truncation
+    return data.candidates[0].content.parts.map(p => p.text).join("");
   }
 
   throw new Error("Gemini không trả về kết quả hợp lệ.");
@@ -92,8 +95,9 @@ async function queryOpenAI(messagesArr, model, apiKey) {
       },
       ...mappedMessages
     ],
-    temperature: 0.2,
-    max_tokens: 600,
+    temperature: 0.1,
+    max_tokens: 2048,
+    top_p: 0.8,
   };
 
   const response = await fetch(url, {

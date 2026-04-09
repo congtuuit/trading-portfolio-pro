@@ -13,6 +13,22 @@ export async function fetchPricesMap(symbols) {
 
   const uniqueSymbols = [...new Set(symbols)];
 
+  // ── CORS Bypass Logic: If in Content Script, proxy via background ──
+  if (typeof window !== "undefined" && window.location.protocol !== "chrome-extension:") {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage({ type: "FETCH_PRICES", symbols: uniqueSymbols }, (res) => {
+        if (chrome.runtime.lastError) {
+          console.error("[TPP] Proxy Fetch Error:", chrome.runtime.lastError);
+          resolve({});
+        } else if (res && res.success) {
+          resolve(res.data);
+        } else {
+          resolve({});
+        }
+      });
+    });
+  }
+
   console.log("fetch ", uniqueSymbols);
 
   try {

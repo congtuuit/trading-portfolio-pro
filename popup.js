@@ -9,8 +9,10 @@ import {
   savePortfolio,
   getSettings,
   saveSettings,
+  getChatHistory,
+  saveChatHistory
 } from "./storage.js";
-import { getDivisor } from "./utils.js";
+import { getDivisor, escapeHTML } from "./utils.js";
 import {
   renderPortfolio,
   bindFormEvents,
@@ -26,11 +28,12 @@ import {
   openChatPanel,
   removeTypingIndicator,
   updateSummaryBar,
+  renderChatHistory
 } from "./ui.js";
 import { fetchPricesMap } from "./price.js";
 import { queryAI, fetchModels } from "./ai.js";
 
-const REFRESH_INTERVAL_MS = 5000;
+const REFRESH_INTERVAL_MS = 30 * 1000;
 
 let portfolio = [];
 let refreshTimer = null;
@@ -123,13 +126,13 @@ function checkProactiveAlerts() {
     const isBuy = trade.type === "BUY";
     const rsi = data.rsi;
     const price = data.close / getDivisor(trade.symbol);
-    
+
     // Condition 1: RSI Oversold
     if (isBuy && rsi > 0 && rsi < 30) {
       console.log(`[Proactive] ${trade.symbol} is Oversold (RSI: ${rsi})`);
       // Could show a notification or UI highlight
     }
-    
+
     // Condition 2: Touching BB Lower
     if (isBuy && price <= data.bb_lower / getDivisor(trade.symbol)) {
       console.log(`[Proactive] ${trade.symbol} touching BB Lower`);
@@ -175,14 +178,16 @@ async function sendToChat(prompt) {
   openChatPanel();
   appendChatMessage("user", prompt);
   appendChatMessage("system-typing", "");
-  
+
   chatHistory.push({ role: "user", text: prompt });
-  
+
   try {
     const responseText = await queryAI(chatHistory, appSettings);
     chatHistory.push({ role: "assistant", text: responseText });
     removeTypingIndicator();
-    const formattedResp = responseText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Safe HTML formatting: Escape first, then format bold
+    const escapedResp = escapeHTML(responseText);
+    const formattedResp = escapedResp.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     appendChatMessage("assistant", formattedResp, true);
   } catch (err) {
     removeTypingIndicator();
@@ -227,10 +232,10 @@ function initExportImport() {
             const importedData = JSON.parse(event.target.result);
             if (Array.isArray(importedData)) {
               // Basic validation of fields
-              const isValid = importedData.every(t => 
+              const isValid = importedData.every(t =>
                 t.symbol && t.type && t.entryPrice && t.quantity
               );
-              
+
               if (!isValid) {
                 alert("Dữ liệu không đúng cấu trúc (Thiếu Mã, Loại lệnh, Giá hoặc Số lượng).");
                 return;
@@ -265,7 +270,9 @@ async function init() {
   console.log("init trading portfolio pro");
   portfolio = await getPortfolio();
   appSettings = await getSettings();
+  chatHistory = await getChatHistory();
 
+  renderChatHistory(chatHistory);
   bindFormEvents(handleSave);
   bindRolloverEvents(handleRollover);
   bindT0Events(handleT0);
@@ -292,7 +299,7 @@ async function init() {
     let ctx = "Đây là danh mục đầu tư hiện hành của tôi:\nMã | Lệnh | Số lượng | Giá Vốn | Trạng thái PnL%\n";
     portfolio.forEach((t) => {
       const pData = currentPriceMap[t.symbol] || { close: t.entryPrice };
-      const cPrice = pData.close / (t.symbol.match(/HOSE|HNX|UPCOM/) ? 1000 : 1);
+      const cPrice = pData.close; // Full Price
       const isBuy = t.type === "BUY";
       const pct = isBuy ? ((cPrice - t.entryPrice) / t.entryPrice) * 100 : ((t.entryPrice - cPrice) / t.entryPrice) * 100;
       ctx += `- ${t.symbol} | ${t.type} | ${t.quantity} | Entry: ${t.entryPrice} | Lãi/Lỗ: ${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%\n`;
@@ -303,6 +310,7 @@ async function init() {
 
   bindAIDCA((trade, currentPrice) => {
     const data = currentPriceMap[trade.symbol] || {};
+    // PnL calculation using full prices
     const pnlPct = trade.type === "BUY" ? ((currentPrice - trade.entryPrice) / trade.entryPrice) * 100 : ((trade.entryPrice - currentPrice) / trade.entryPrice) * 100;
     const prompt = `Tôi đang gồng lỗ mã ${trade.symbol} (${trade.type}). Mức âm hiện hành: ${pnlPct.toFixed(2)}%.\nGiá hiện hành: ${currentPrice}.\nThông số kỹ thuật hiện tại: RSI=${data.rsi ? Math.round(data.rsi) : "N/A"}, Trend EMA200=${data.ema200 || "N/A"}, BB Lower=${data.bb_lower || "N/A"}.\n\nCó thể DCA bắt đáy (hoặc cưa chân bàn) tại đây không? Phân tích 3 câu.`;
     sendToChat(prompt);
@@ -312,12 +320,15 @@ async function init() {
   bindChatEvents(
     async (text) => {
       chatHistory.push({ role: "user", text: text });
+      await saveChatHistory(chatHistory);
       const responseText = await queryAI(chatHistory, appSettings);
       chatHistory.push({ role: "assistant", text: responseText });
+      await saveChatHistory(chatHistory);
       return responseText;
     },
-    () => {
+    async () => {
       chatHistory = [];
+      await saveChatHistory(chatHistory);
     }
   );
 

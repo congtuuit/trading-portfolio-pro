@@ -129,8 +129,8 @@ export function bindAIEvents(onAskAI) {
   }
 }
 
-export function bindAIDCA(onAskDCA) {
-  const btnAIDCA = document.getElementById("btn-ai-dca");
+export function bindAIDCA(onAskDCA, root = document) {
+  const btnAIDCA = root.querySelector("#btn-ai-dca");
   if (btnAIDCA) {
     btnAIDCA.addEventListener("click", () => {
       if (!currentDCATrade || !currentDCAPrice) return;
@@ -139,8 +139,8 @@ export function bindAIDCA(onAskDCA) {
   }
 }
 
-export function bindAIPortfolio(onAskPortfolio) {
-  const btnAIPortfolio = document.getElementById("btn-ai-portfolio");
+export function bindAIPortfolio(onAskPortfolio, root = document) {
+  const btnAIPortfolio = root.querySelector("#btn-ai-portfolio");
   if (btnAIPortfolio) {
     btnAIPortfolio.addEventListener("click", () => {
       onAskPortfolio();
@@ -148,18 +148,18 @@ export function bindAIPortfolio(onAskPortfolio) {
   }
 }
 
-export function openChatPanel() {
-  document.getElementById("panel-chat").classList.add("open");
-  const msgContainer = document.getElementById("chat-messages");
+export function openChatPanel(root = document) {
+  root.querySelector("#panel-chat").classList.add("open");
+  const msgContainer = root.querySelector("#chat-messages");
   msgContainer.scrollTop = msgContainer.scrollHeight;
 }
 
-export function closeChatPanel() {
-  document.getElementById("panel-chat").classList.remove("open");
+export function closeChatPanel(root = document) {
+  root.querySelector("#panel-chat").classList.remove("open");
 }
 
-export function appendChatMessage(role, text, isHtml = false) {
-  const container = document.getElementById("chat-messages");
+export function appendChatMessage(role, text, isHtml = false, root = document) {
+  const container = root.querySelector("#chat-messages");
   const div = document.createElement("div");
   div.className = `chat-msg ${role === 'user' ? 'user-msg' : 'ai-msg'}`;
   
@@ -172,35 +172,63 @@ export function appendChatMessage(role, text, isHtml = false) {
     else div.textContent = text;
   }
   
-  container.appendChild(div);
-  container.scrollTop = container.scrollHeight;
+  if (container) {
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+  }
   return div;
 }
 
-export function removeTypingIndicator() {
-  const typing = document.getElementById("chat-typing");
+export function removeTypingIndicator(root = document) {
+  const typing = root.querySelector("#chat-typing");
   if (typing) typing.remove();
 }
 
-export function bindChatEvents(onSendChat, onClearChat) {
-  const btnFloating = document.getElementById("btn-floating-chat");
-  const btnClose = document.getElementById("btn-chat-close");
-  const btnClear = document.getElementById("btn-chat-clear");
-  const chatForm = document.getElementById("chat-form");
-  const inpChat = document.getElementById("inp-chat");
-  const btnSend = document.getElementById("btn-chat-send");
+/**
+ * Render entire chat history from an array.
+ * @param {Array} history - [{role, text}]
+ */
+export function renderChatHistory(history, root = document) {
+  const container = root.querySelector("#chat-messages");
+  // Keep the welcome message if history is empty, otherwise clear and render
+  if (history && history.length > 0 && container) {
+    container.innerHTML = "";
+    history.forEach(msg => {
+      let formattedText = msg.text;
+      let isHtml = false;
+      
+      if (msg.role === "assistant") {
+        const escaped = escapeHTML(msg.text);
+        formattedText = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        isHtml = true;
+      }
+      
+      appendChatMessage(msg.role, formattedText, isHtml, root);
+    });
+  }
+}
+
+export function bindChatEvents(onSendChat, onClearChat, root = document) {
+  const btnFloating = root.querySelector("#btn-floating-chat");
+  const btnClose = root.querySelector("#btn-chat-close");
+  const btnClear = root.querySelector("#btn-chat-clear");
+  const chatForm = root.querySelector("#chat-form");
+  const inpChat = root.querySelector("#inp-chat");
+  const btnSend = root.querySelector("#btn-chat-send");
   
-  if (btnFloating) btnFloating.addEventListener("click", openChatPanel);
-  if (btnClose) btnClose.addEventListener("click", closeChatPanel);
+  if (btnFloating) btnFloating.addEventListener("click", () => openChatPanel(root));
+  if (btnClose) btnClose.addEventListener("click", () => closeChatPanel(root));
   
   if (btnClear) {
     btnClear.addEventListener("click", () => {
-      onClearChat();
-      document.getElementById("chat-messages").innerHTML = `
-        <div class="chat-msg ai-msg">
-          Đã xóa lịch sử trò chuyện. Tôi có thể giúp gì cho bạn?
-        </div>
-      `;
+      if (confirm("Xóa toàn bộ lịch sử trò chuyện?")) {
+        onClearChat();
+        root.querySelector("#chat-messages").innerHTML = `
+          <div class="chat-msg ai-msg">
+            Đã xóa lịch sử trò chuyện. Tôi có thể giúp gì cho bạn?
+          </div>
+        `;
+      }
     });
   }
   
@@ -225,19 +253,20 @@ export function bindChatEvents(onSendChat, onClearChat) {
       inpChat.value = "";
       btnSend.disabled = true;
       
-      appendChatMessage("user", text);
-      openChatPanel();
+      appendChatMessage("user", text, false, root);
+      openChatPanel(root);
       
-      appendChatMessage("system-typing", "");
+      appendChatMessage("system-typing", "", false, root);
       try {
         const responseText = await onSendChat(text);
-        removeTypingIndicator();
-        // Gán Regex cho formatted html bold
-        const formattedResp = responseText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-        appendChatMessage("assistant", formattedResp, true);
+        removeTypingIndicator(root);
+        // Safe HTML formatting: Escape first, then format bold
+        const escapedResp = escapeHTML(responseText);
+        const formattedResp = escapedResp.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        appendChatMessage("assistant", formattedResp, true, root);
       } catch (err) {
-        removeTypingIndicator();
-        appendChatMessage("assistant", `❌ Lỗi: ${err.message}`, true);
+        removeTypingIndicator(root);
+        appendChatMessage("assistant", `❌ Lỗi: ${err.message}`, true, root);
       }
     });
   }
@@ -369,8 +398,9 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels) {
  * @param {Function} onEdit    - (id) => void
  * @param {Object}   priceMap  - Mapping of symbol -> { close, change, change_abs }
  */
-export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
-  const container = document.getElementById("portfolio-list");
+export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}, root = document) {
+  const container = root.querySelector("#portfolio-list");
+  if (!container) return;
 
   // ── Empty state ──
   if (!portfolio || portfolio.length === 0) {
@@ -398,14 +428,22 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
   let totalPnl = 0;
 
   portfolio.forEach((trade) => {
+    const divisor = getDivisor(trade.symbol);
     const priceData = priceMap[trade.symbol] || {
       close: trade.entryPrice,
       change: 0,
       change_abs: 0,
     };
-    const currentPrice = priceData.close / getDivisor(trade.symbol);
-    const { pnl, pct } = calculatePnL(trade, currentPrice);
+    
+    // Internal calculation using full prices
+    const { pnl, pct } = calculatePnL(trade, priceData.close);
     totalPnl += pnl;
+
+    // Display prices (divided by divisor)
+    const currentDisplayPrice = priceData.close / divisor;
+    const entryDisplayPrice = parseFloat(trade.entryPrice) / divisor;
+    const slDisplayPrice = trade.stopLoss ? (parseFloat(trade.stopLoss) / divisor) : null;
+    const tpDisplayPrice = trade.takeProfit ? (parseFloat(trade.takeProfit) / divisor) : null;
 
     const isProfit = pnl >= 0;
     const pnlClass = isProfit ? "profit" : "loss";
@@ -417,11 +455,11 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
     let trendIndicator = "";
     if (priceData.ema200 && priceData.close) {
       if (priceData.close > priceData.ema200) trendIndicator = "<span style='color:var(--profit);font-size:10px;margin-left:4px;' title='Trend Tăng'>▲</span>";
-      else if (priceData.close < priceData.ema200) trendIndicator = "<span style='color:var(--loss);font-size:10px;margin-left:4px;' title='Trend Giảm'>▼</span>";
+      else if (priceData.close < priceData.ema200) trendIndicator = "<span style='color:var(--loss);font-size:10px;margin-left:4px;' title='Trend Giạm'>▼</span>";
     }
 
-    const slText = trade.stopLoss ? fmt(trade.stopLoss) : "—";
-    const tpText = trade.takeProfit ? fmt(trade.takeProfit) : "—";
+    const slText = slDisplayPrice ? fmt(slDisplayPrice) : "—";
+    const tpText = tpDisplayPrice ? fmt(tpDisplayPrice) : "—";
 // Sanitize user-controllable strings for HTML
     const safeSymbol = escapeHTML(trade.symbol);
     const safeNote = trade.note ? escapeHTML(trade.note) : "";
@@ -436,15 +474,15 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
         <span class="trade-qty">×${fmt(parseFloat(trade.quantity))}</span>
       </div>
       <div class="trade-prices">
-        <span class="price-item">Entry <strong>${fmt(parseFloat(trade.entryPrice))}</strong></span>
-        <span class="price-item">Current <strong>${fmt(currentPrice)}</strong> <span class="${changeClass}">(${fmtSigned(changePct)}%)</span></span>
+        <span class="price-item">Entry <strong>${fmt(entryDisplayPrice)}</strong></span>
+        <span class="price-item">Current <strong>${fmt(currentDisplayPrice)}</strong> <span class="${changeClass}">(${fmtSigned(changePct)}%)</span></span>
         <span class="price-item">SL <strong>${slText}</strong></span>
         <span class="price-item">TP <strong>${tpText}</strong></span>
       </div>
       ${noteHtml}
       <div class="trade-footer">
         <div class="pnl ${pnlClass}">
-          ${fmtSigned(pnl)} <span class="pnl-pct">(${fmtSigned(pct)}%)</span>
+          ${fmtSigned(pnl / 1000)} <span class="pnl-pct">(${fmtSigned(pct)}%)</span>
         </div>
       <div class="trade-actions">
         <button class="btn btn-view" data-symbol="${safeSymbol}" title="View on TradingView">📈 View</button>
@@ -465,10 +503,10 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
     card.innerHTML = html;
   });
 
-  updateSummaryBar(portfolio, priceMap);
+  updateSummaryBar(portfolio, priceMap, root);
 
   // Bind info buttons
-  document.querySelectorAll(".btn-info").forEach((btn) => {
+  root.querySelectorAll(".btn-info").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       const id = e.target.dataset.id;
       const trade = portfolio.find(t => t.id === id);
@@ -478,14 +516,14 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
       const analysisHtml = getAnalysisHTML(trade.symbol, priceData, trade.type);
       
       const typeClass = trade.type === "BUY" ? "badge-buy" : "badge-sell";
-      document.getElementById("modal-title").innerHTML = `Phân Tích <strong>${trade.symbol}</strong> <span class="badge ${typeClass}" style="margin-left:8px;font-size:10px;">${trade.type}</span>`;
-      document.getElementById("modal-body").innerHTML = analysisHtml;
-      document.getElementById("modal-analysis").style.display = "flex";
+      root.querySelector("#modal-title").innerHTML = `Phân Tích <strong>${trade.symbol}</strong> <span class="badge ${typeClass}" style="margin-left:8px;font-size:10px;">${trade.type}</span>`;
+      root.querySelector("#modal-body").innerHTML = analysisHtml;
+      root.querySelector("#modal-analysis").style.display = "flex";
     });
   });
 
   // Bind DCA buttons
-  document.querySelectorAll(".btn-dca").forEach((btn) => {
+  root.querySelectorAll(".btn-dca").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       const id = e.target.dataset.id;
       const trade = portfolio.find(t => t.id === id);
@@ -495,58 +533,58 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
       const divisor = getDivisor(trade.symbol);
       
       currentDCATrade = trade;
-      currentDCAPrice = priceData.close / divisor;
+      currentDCAPrice = priceData.close; // Store full price for AI synchronization
       
       const typeClass = trade.type === "BUY" ? "badge-buy" : "badge-sell";
-      document.getElementById("dca-title").innerHTML = `🧮 Gỡ Lỗ / DCA: <strong>${trade.symbol}</strong> <span class="badge ${typeClass}" style="margin-left:8px;font-size:10px;">${trade.type}</span>`;
-      document.getElementById("dca-qty").textContent = fmt(trade.quantity);
-      document.getElementById("dca-entry").textContent = fmt(trade.entryPrice);
-      document.getElementById("dca-current").textContent = fmt(currentDCAPrice);
+      root.querySelector("#dca-title").innerHTML = `🧮 Gỡ Lỗ / DCA: <strong>${trade.symbol}</strong> <span class="badge ${typeClass}" style="margin-left:8px;font-size:10px;">${trade.type}</span>`;
+      root.querySelector("#dca-qty").textContent = fmt(trade.quantity);
+      root.querySelector("#dca-entry").textContent = fmt(parseFloat(trade.entryPrice) / divisor);
+      root.querySelector("#dca-current").textContent = fmt(currentDCAPrice / divisor);
       
-      const aiResponse = document.getElementById("ai-dca-response");
+      const aiResponse = root.querySelector("#ai-dca-response");
       if (aiResponse) {
         aiResponse.style.display = "none";
         aiResponse.innerHTML = "";
       }
       
-      document.getElementById("inp-dca-qty").value = "";
-      document.getElementById("dca-result").innerHTML = "Hãy nhập số lượng mua/bán thêm để xem kịch bản hòa vốn.";
-      document.getElementById("modal-dca").style.display = "flex";
+      root.querySelector("#inp-dca-qty").value = "";
+      root.querySelector("#dca-result").innerHTML = "Hãy nhập số lượng mua/bán thêm để xem kịch bản hòa vốn.";
+      root.querySelector("#modal-dca").style.display = "flex";
     });
   });
 
   // Bind Close / Rollover buttons
-  document.querySelectorAll(".btn-close-trade").forEach((btn) => {
+  root.querySelectorAll(".btn-close-trade").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       const id = e.target.dataset.id;
       const trade = portfolio.find(t => t.id === id);
       if (!trade) return;
       
       const priceData = priceMap[trade.symbol] || { close: trade.entryPrice };
-      const currentPrice = priceData.close / getDivisor(trade.symbol);
-      const { pnl } = calculatePnL(trade, currentPrice);
+      const divisor = getDivisor(trade.symbol);
+      const { pnl } = calculatePnL(trade, priceData.close);
       
       currentCloseTradeId = id;
       currentRealizedPnl = pnl;
       
-      document.getElementById("close-sym").textContent = `${trade.symbol} (${trade.type})`;
-      const pnlEl = document.getElementById("close-pnl");
-      pnlEl.textContent = fmtSigned(pnl);
+      root.querySelector("#close-sym").textContent = `${trade.symbol} (${trade.type})`;
+      const pnlEl = root.querySelector("#close-pnl");
+      pnlEl.textContent = fmtSigned(pnl / 1000); // Divided PnL for display
       pnlEl.style.color = pnl >= 0 ? "var(--profit)" : "var(--loss)";
       
-      const selTarget = document.getElementById("sel-merge-target");
+      const selTarget = root.querySelector("#sel-merge-target");
       selTarget.innerHTML = '<option value="">-- Chỉ xóa lệnh (Giữ nguyên các mã khác) --</option>';
       
       portfolio.forEach(t => {
         if (t.id !== id && t.symbol === trade.symbol) {
           const opt = document.createElement("option");
           opt.value = t.id;
-          opt.textContent = `Gộp vào: ${t.symbol} (SL: ${fmt(t.quantity)} @ ${fmt(t.entryPrice)})`;
+          opt.textContent = `Gộp vào: ${t.symbol} (SL: ${fmt(t.quantity)} @ ${fmt(parseFloat(t.entryPrice) / divisor)})`;
           selTarget.appendChild(opt);
         }
       });
       
-      document.getElementById("modal-close").style.display = "flex";
+      root.querySelector("#modal-close").style.display = "flex";
     });
   });
 
@@ -578,35 +616,40 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}) {
 /**
  * Update the top summary bar with total PnL and Health Score.
  */
-export function updateSummaryBar(portfolio, priceMap) {
+export function updateSummaryBar(portfolio, priceMap, root = document) {
   let totalPnl = 0;
   let totalValue = 0;
   let winningTrades = 0;
 
   portfolio.forEach((trade) => {
     const data = priceMap[trade.symbol] || { close: trade.entryPrice };
-    const currentPrice = data.close / getDivisor(trade.symbol);
+    const divisor = getDivisor(trade.symbol);
+    
+    // Internal calculation using full prices
     const isBuy = trade.type === "BUY";
     const pnl = isBuy
-      ? (currentPrice - trade.entryPrice) * trade.quantity
-      : (trade.entryPrice - currentPrice) * trade.quantity;
+      ? (data.close - trade.entryPrice) * trade.quantity
+      : (trade.entryPrice - data.close) * trade.quantity;
     
     totalPnl += pnl;
-    totalValue += currentPrice * trade.quantity;
+    totalValue += data.close * trade.quantity;
     if (pnl > 0) winningTrades++;
   });
 
   const winRate = portfolio.length > 0 ? (winningTrades / portfolio.length) * 100 : 0;
   const healthScore = winRate; // Simple health score based on win rate
 
-  const elPnl = document.getElementById("total-pnl");
-  const elHeader = document.querySelector(".header");
+  const elPnl = root.querySelector("#total-pnl");
+  const elHeader = root.querySelector(".header");
+
+  // For display, we divide by 1000 (primary currency scaling)
+  const displayTotalPnl = totalPnl / 1000;
 
   if (elPnl) {
     elPnl.innerHTML = `
       <div style="display:flex; flex-direction:column; align-items:flex-end;">
         <span style="font-size:16px; font-weight:bold; color:${totalPnl >= 0 ? "var(--profit)" : "var(--loss)"};">
-          ${totalPnl >= 0 ? "+" : ""}${fmt(totalPnl)}
+          ${totalPnl >= 0 ? "+" : ""}${fmt(displayTotalPnl)}
         </span>
         <div style="font-size:10px; color:var(--text-muted); display:flex; gap:8px;">
           <span>Health: <strong style="color:${healthScore > 50 ? "var(--profit)" : "orange"};">${fmt(healthScore)}%</strong></span>
@@ -617,15 +660,15 @@ export function updateSummaryBar(portfolio, priceMap) {
   }
 
   // Mini Allocation Bar integration
-  // We can inject a thin bar at the bottom of the header
-  let allocationBar = document.getElementById("allocation-bar");
-  if (!allocationBar) {
+  let allocationBar = root.querySelector("#allocation-bar");
+  if (!allocationBar && elHeader) {
     allocationBar = document.createElement("div");
     allocationBar.id = "allocation-bar";
     allocationBar.style.cssText = "height:3px; width:100%; position:absolute; bottom:0; left:0; display:flex;";
     elHeader.style.position = "relative";
     elHeader.appendChild(allocationBar);
   }
+
 
   if (portfolio.length > 0) {
     let barHtml = "";
@@ -635,7 +678,7 @@ export function updateSummaryBar(portfolio, priceMap) {
     let currentTotalValue = 0;
     const weights = symbols.map((s, i) => {
       const val = portfolio.filter(t => t.symbol === s).reduce((acc, t) => {
-        const p = (priceMap[s]?.close || 0) / getDivisor(s);
+        const p = priceMap[s]?.close || 0; // Use full price for weighting
         return acc + (p * t.quantity);
       }, 0);
       currentTotalValue += val;
@@ -643,7 +686,7 @@ export function updateSummaryBar(portfolio, priceMap) {
     });
 
     weights.forEach(w => {
-      const pct = (w.val / currentTotalValue) * 100;
+      const pct = (w.val / (currentTotalValue || 1)) * 100;
       barHtml += `<div title="${w.sym}: ${fmt(pct)}%" style="width:${pct}%; background:${w.color}; height:100%;"></div>`;
     });
     allocationBar.innerHTML = barHtml;
@@ -718,6 +761,7 @@ export function bindFormEvents(onSave) {
     inpDCA.addEventListener("input", (e) => {
       if (!currentDCATrade || !currentDCAPrice) return;
       
+      const divisor = getDivisor(currentDCATrade.symbol);
       const addQty = parseFloat(e.target.value) || 0;
       const currentQty = parseFloat(currentDCATrade.quantity);
       const entryPrice = parseFloat(currentDCATrade.entryPrice);
@@ -737,7 +781,7 @@ export function bindFormEvents(onSave) {
         const oldBounceNeeded = ((entryPrice - currentDCAPrice) / currentDCAPrice) * 100;
         
         document.getElementById("dca-result").innerHTML = `
-          <strong>Giá Trung Bình Mới:</strong> <span style="font-size:14px;color:var(--text-primary);">${fmt(newAvg)}</span><br/>
+          <strong>Giá Trung Bình Mới:</strong> <span style="font-size:14px;color:var(--text-primary);">${fmt(newAvg / (divisor || 1))}</span><br/>
           <div style="margin-top:8px;">Để hòa vốn, tổng danh mục cài mới cần tăng: <strong style="color:var(--profit);">+${fmt(bounceNeeded)}%</strong> <br/>
           <i style="color:var(--text-muted);font-size:11px;">(Thay vì +${fmt(oldBounceNeeded)}% như cũ)</i></div>
         `;
@@ -746,7 +790,7 @@ export function bindFormEvents(onSave) {
         const oldDropNeeded = ((currentDCAPrice - entryPrice) / currentDCAPrice) * 100;
         
         document.getElementById("dca-result").innerHTML = `
-          <strong>Giá Trung Bình Mới:</strong> <span style="font-size:14px;color:var(--text-primary);">${fmt(newAvg)}</span><br/>
+          <strong>Giá Trung Bình Mới:</strong> <span style="font-size:14px;color:var(--text-primary);">${fmt(newAvg / (divisor || 1))}</span><br/>
           <div style="margin-top:8px;">Để hòa vốn, tổng danh mục cài mới cần sập: <strong style="color:var(--profit);">${fmtSigned(-dropNeeded)}%</strong> <br/>
           <i style="color:var(--text-muted);font-size:11px;">(Thay vì ${fmtSigned(-oldDropNeeded)}% như cũ)</i></div>
         `;
@@ -765,8 +809,8 @@ export function bindFormEvents(onSave) {
           if (pct === 3) bestScenario = scenario; // Default recommended
 
           t0Html += `<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;">
-            <span>Giá hồi <strong>+${pct}%</strong> (lên ${fmt(scenario.targetExit)})</span>
-            <span style="color:var(--profit);">Bỏ túi: +${fmt(scenario.totalProfit)}</span>
+            <span>Giá hồi <strong>+${pct}%</strong> (lên ${fmt(scenario.targetExit / (divisor || 1))})</span>
+            <span style="color:var(--profit);">Bỏ túi: +${fmt(scenario.totalProfit / 1000)}</span>
           </div>`;
       });
       t0Html += `</div>`;
@@ -777,8 +821,9 @@ export function bindFormEvents(onSave) {
       const t0Area = document.getElementById("t0-action-area");
       const t0Details = document.getElementById("t0-details");
       if (t0Area && bestScenario) {
+        const divisor = getDivisor(currentDCATrade.symbol);
         t0Area.style.display = "block";
-        t0Details.innerHTML = `Giả định lướt <strong>${fmt(addQty)}</strong> units với lợi nhuận 3% (+${fmt(bestScenario.totalProfit)}), giá vốn mã gốc sẽ hạ từ ${fmt(currentDCATrade.entryPrice)} xuống <strong>${fmt(bestScenario.newEntry)}</strong>.`;
+        t0Details.innerHTML = `Giả định lướt <strong>${fmt(addQty)}</strong> units với lợi nhuận 3% (+${fmt(bestScenario.totalProfit / 1000)}), giá vốn mã gốc sẽ hạ từ ${fmt(parseFloat(currentDCATrade.entryPrice) / divisor)} xuống <strong>${fmt(bestScenario.newEntry / divisor)}</strong>.`;
         
         // Setup the one-time confirm event
         const btnT0 = document.getElementById("btn-confirm-t0");
@@ -897,14 +942,20 @@ export function bindFormEvents(onSave) {
     clearErrors();
 
     const symbol = symIn.value.trim().toUpperCase();
+    const divisor = getDivisor(symbol);
     const type = document.getElementById("inp-type").value;
     const quantity = parseFloat(document.getElementById("inp-qty").value) || 1;
-    const entryPrice = parseFloat(document.getElementById("inp-entry").value);
-    const stopLoss =
+    let entryPrice = parseFloat(document.getElementById("inp-entry").value);
+    let stopLoss =
       parseFloat(document.getElementById("inp-sl").value) || null;
-    const takeProfit =
+    let takeProfit =
       parseFloat(document.getElementById("inp-tp").value) || null;
     const note = document.getElementById("inp-note").value.trim();
+
+    // Data normalization: Store at full price
+    if (entryPrice) entryPrice *= divisor;
+    if (stopLoss) stopLoss *= divisor;
+    if (takeProfit) takeProfit *= divisor;
 
     let valid = true;
     if (!symbol) {
@@ -947,12 +998,13 @@ export function bindFormEvents(onSave) {
 
 export function populateForm(trade) {
   currentEditId = trade.id;
+  const divisor = getDivisor(trade.symbol);
   document.getElementById("inp-symbol").value = trade.symbol;
   document.getElementById("inp-type").value = trade.type;
   document.getElementById("inp-qty").value = trade.quantity;
-  document.getElementById("inp-entry").value = trade.entryPrice;
-  document.getElementById("inp-sl").value = trade.stopLoss || "";
-  document.getElementById("inp-tp").value = trade.takeProfit || "";
+  document.getElementById("inp-entry").value = trade.entryPrice / divisor;
+  document.getElementById("inp-sl").value = trade.stopLoss ? (trade.stopLoss / divisor) : "";
+  document.getElementById("inp-tp").value = trade.takeProfit ? (trade.takeProfit / divisor) : "";
   document.getElementById("inp-note").value = trade.note || "";
 
   document.getElementById("form-title").textContent = "✏️ Edit Position";

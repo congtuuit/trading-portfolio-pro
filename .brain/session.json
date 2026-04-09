@@ -1,39 +1,40 @@
 {
-  "updated_at": "2026-04-09T07:51:00Z",
+  "updated_at": "2026-04-09T08:09:30Z",
   "working_on": {
-    "feature": "Bug Fixing & UI Optimization",
-    "task": "Fix TypeError: portfolio.forEach is not a function and clean up popup.js",
+    "feature": "Bug Fixing & AI Optimization",
+    "task": "Fix Gemini text truncation and request structure",
     "status": "completed",
     "files": [
-      "ui.js",
-      "popup.js"
+      "ai.js",
+      "popup.js",
+      "background.js"
     ],
-    "notes": "Sửa lỗi truyền tham số sai kiểu dữ liệu vào hàm renderSummaryBar và xóa bỏ hàm trùng lặp."
+    "notes": "Đã sửa lỗi Gemini bị cụt chữ bằng cách chuẩn hóa cấu trúc request và gộp các phần của câu trả lời."
   },
   "recent_changes": [
     {
-      "timestamp": "2026-04-09T07:50:00Z",
+      "timestamp": "2026-04-09T08:09:00Z",
       "type": "fix",
-      "description": "Sửa lỗi TypeError trong ui.js do truyền totalPnl (number) thay vì portfolio (array)."
+      "description": "Sửa lỗi Gemini bị ngắt quãng (truncation) và cập nhật tên model mặc định chính xác."
     },
     {
-      "timestamp": "2026-04-09T07:50:30Z",
-      "type": "refactor",
-      "description": "Xóa hàm updateSummaryBar trùng lặp trong popup.js và import từ ui.js để đồng nhất UI."
+      "timestamp": "2026-04-09T08:08:00Z",
+      "type": "user_edit",
+      "description": "User điều chỉnh khoảng thời gian refresh UI lên 30s và căn chỉnh lại spacing code."
     }
   ],
   "errors_encountered": [
     {
-      "error": "Uncaught (in promise) TypeError: portfolio.forEach is not a function",
-      "solution": "Đảm bảo truyền mảng portfolio và priceMap khi gọi updateSummaryBar thay vì truyền số totalPnl.",
+      "error": "Gemini text truncated (stops after a few words)",
+      "solution": "Gộp tất cả các 'parts' trong phản hồi của Gemini và sửa lại cấu trúc system_instruction thành mảng.",
       "resolved": true,
-      "file": "ui.js"
+      "file": "ai.js"
     }
   ],
   "decisions_made": [
     {
-      "decision": "Hợp nhất hàm updateSummaryBar vào ui.js",
-      "reason": "ui.js chứa logic render Dashboard phức tạp hơn (Health Score, Win Rate), popup.js chỉ nên điều khiển luồng dữ liệu."
+      "decision": "Dùng gemini-1.5-flash làm mặc định",
+      "reason": "Model ổn định và nhanh hơn so với các bản exp hoặc tên sai (2.5)."
     }
   ]
 }

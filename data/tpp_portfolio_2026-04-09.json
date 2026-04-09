@@ -1,1 +1,62 @@
-[{"entryPrice":22.78,"id":"trade_1775720429550","note":"","quantity":100,"stopLoss":11.54,"symbol":"HOSE:ACL","takeProfit":13.83,"type":"BUY"},{"entryPrice":34.56,"id":"trade_1775720766381","note":"","quantity":215,"stopLoss":15.71,"symbol":"HNX:CEO","takeProfit":20.47,"type":"BUY"},{"entryPrice":23.2,"id":"trade_1775720813032","note":"","quantity":300,"stopLoss":23.73,"symbol":"HOSE:HCM","takeProfit":27.98,"type":"BUY"},{"entryPrice":18.4,"id":"trade_1775720851514","note":"","quantity":500,"stopLoss":15.68,"symbol":"HOSE:NVL","takeProfit":19.19,"type":"BUY"},{"id":"trade_1775720892703","symbol":"HNX:HUT","type":"BUY","quantity":1180,"entryPrice":24.27,"stopLoss":15.94,"takeProfit":19.73,"note":""},{"id":"trade_1775720926358","symbol":"UPCOM:TAR","type":"BUY","quantity":3040,"entryPrice":23.17,"stopLoss":2.88,"takeProfit":4.45,"note":""}]
+[
+    {
+        "entryPrice": 22780,
+        "id": "trade_1775720429550",
+        "note": "",
+        "quantity": 100,
+        "stopLoss": 11540,
+        "symbol": "HOSE:ACL",
+        "takeProfit": 13830,
+        "type": "BUY"
+    },
+    {
+        "entryPrice": 34560,
+        "id": "trade_1775720766381",
+        "note": "",
+        "quantity": 215,
+        "stopLoss": 15710,
+        "symbol": "HNX:CEO",
+        "takeProfit": 20470,
+        "type": "BUY"
+    },
+    {
+        "entryPrice": 23200,
+        "id": "trade_1775720813032",
+        "note": "",
+        "quantity": 300,
+        "stopLoss": 23730,
+        "symbol": "HOSE:HCM",
+        "takeProfit": 27980,
+        "type": "BUY"
+    },
+    {
+        "entryPrice": 18400,
+        "id": "trade_1775720851514",
+        "note": "",
+        "quantity": 500,
+        "stopLoss": 15680,
+        "symbol": "HOSE:NVL",
+        "takeProfit": 19190,
+        "type": "BUY"
+    },
+    {
+        "id": "trade_1775720892703",
+        "symbol": "HNX:HUT",
+        "type": "BUY",
+        "quantity": 1180,
+        "entryPrice": 24270,
+        "stopLoss": 15940,
+        "takeProfit": 19730,
+        "note": ""
+    },
+    {
+        "id": "trade_1775720926358",
+        "symbol": "UPCOM:TAR",
+        "type": "BUY",
+        "quantity": 3040,
+        "entryPrice": 23170,
+        "stopLoss": 2880,
+        "takeProfit": 4450,
+        "note": ""
+    }
+]

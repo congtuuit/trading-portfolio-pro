@@ -31,7 +31,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
 async function setupAlarm() {
   const settings = await getSettings();
   const interval = MONITOR_INTERVAL_MINS;
-  
+
   chrome.alarms.clear(MONITOR_ALARM);
   if (settings.tgEnabled) {
     chrome.alarms.create(MONITOR_ALARM, { periodInMinutes: interval });
@@ -64,20 +64,25 @@ async function checkPortfolioAndNotify() {
     if (!data) continue;
 
     const divisor = getDivisor(trade.symbol);
-    const price = data.close / divisor;
+    const price = data.close / divisor; // Divided price for display
     const isBuy = trade.type === "BUY";
-    
-    // Condition 1: TP/SL Hit
-    if (trade.takeProfit && (isBuy ? price >= trade.takeProfit : price <= trade.takeProfit)) {
-        await notifyTelegram(settings, `🎯 <b>TARGET REACHED!</b>\n\n${trade.symbol} đã chạm vùng Chốt Lời tại <b>${price}</b>.\nHãy xem xét chốt vị thế để bảo vệ lợi nhuận.`);
+
+    // Internal targets (Stored as full prices)
+    const tp = trade.takeProfit;
+    const sl = trade.stopLoss;
+
+    // Condition 1: TP/SL Hit (Compare full prices)
+    if (tp && (isBuy ? data.close >= tp : data.close <= tp)) {
+      await notifyTelegram(settings, `🎯 <b>TARGET REACHED!</b>\n\n${trade.symbol} đã chạm vùng Chốt Lời tại <b>${price}</b>.\nHãy xem xét chốt vị thế để bảo vệ lợi nhuận.`);
     }
-    else if (trade.stopLoss && (isBuy ? price <= trade.stopLoss : price >= trade.stopLoss)) {
-        await notifyTelegram(settings, `⚠️ <b>STOP LOSS HIT!</b>\n\n${trade.symbol} đã chạm vùng Cắt Lỗ tại <b>${price}</b>.\nAnh nên rà soát lại kỷ luật giao dịch.`);
+    else if (sl && (isBuy ? data.close <= sl : data.close >= sl)) {
+      await notifyTelegram(settings, `⚠️ <b>STOP LOSS HIT!</b>\n\n${trade.symbol} đã chạm vùng Cắt Lỗ tại <b>${price}</b>.\nAnh nên rà soát lại kỷ luật giao dịch.`);
     }
 
     // Condition 2: T0 Opportunity (RSI Oversold + Price <= BB Lower)
-    if (isBuy && data.rsi > 0 && data.rsi < 30 && price <= (data.bb_lower / divisor)) {
-        await notifyTelegram(settings, `🌊 <b>THAY NƯỚC T0!</b>\n\n${trade.symbol} đang ở vùng <b>QUÁ BÁN</b> (RSI: ${Math.round(data.rsi)}).\nGiá đã chạm dải BB Lower (${price}). Đây là cơ hội tốt để lướt T0 hạ giá vốn!`);
+    // Both sides of comparison are full prices: data.close vs data.bb_lower
+    if (isBuy && data.rsi > 0 && data.rsi < 30 && data.close <= data.bb_lower) {
+      await notifyTelegram(settings, `🌊 <b>THAY NƯỚC T0!</b>\n\n${trade.symbol} đang ở vùng <b>QUÁ BÁN</b> (RSI: ${Math.round(data.rsi)}).\nGiá đã chạm dải BB Lower (${price}). Đây là cơ hội tốt để lướt T0 hạ giá vốn!`);
     }
   }
 }
@@ -90,3 +95,13 @@ async function notifyTelegram(settings, message) {
     console.error("[TPP] Telegram notify failed:", err);
   }
 }
+
+// ── Message Listener for Price Fetching (CORS Proxy) ──
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === "FETCH_PRICES") {
+    fetchPricesMap(message.symbols)
+      .then(data => sendResponse({ success: true, data }))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true; // Keep channel open for async response
+  }
+});
