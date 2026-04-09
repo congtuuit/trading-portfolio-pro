@@ -2,12 +2,12 @@
   "meta": {
     "schema_version": "1.1.0",
     "awf_version": "3.3.0",
-    "last_updated": "2026-04-08T18:20:00Z"
+    "last_updated": "2026-04-09T07:51:00Z"
   },
   "project": {
     "name": "Trading Portfolio Pro",
     "type": "Chrome Extension",
-    "status": "v2.0 - Implemented",
+    "status": "v2.0.1 - Bug Fixed",
     "description": "Quản lý danh mục đầu tư tích hợp TradingView và Trợ lý AI."
   },
   "tech_stack": {
@@ -36,7 +36,7 @@
   ],
   "conventions": [
     "Security-First: Dùng textContent hoặc escapeHTML thay cho innerHTML.",
-    "Modular: Chia nhỏ logic vào utils.js, analysis.js, price.js.",
+    "Modular: Chia nhỏ logic vào utils.js, analysis.js, price.js. ui.js và popup.js tách biệt UI và Control.",
     "Divisor: Mọi mã HOSE/HNX/UPCOM phải chia cho 1000."
   ]
 }

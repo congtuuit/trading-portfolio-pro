@@ -1,50 +1,39 @@
 {
-  "updated_at": "2026-04-08T18:22:00Z",
+  "updated_at": "2026-04-09T07:51:00Z",
   "working_on": {
-    "feature": "V2.0 Upgrade - The Smart Strategist",
-    "task": "Final verification and Save Brain",
+    "feature": "Bug Fixing & UI Optimization",
+    "task": "Fix TypeError: portfolio.forEach is not a function and clean up popup.js",
     "status": "completed",
     "files": [
-      "utils.js",
-      "analysis.js",
-      "ai.js",
       "ui.js",
-      "popup.js",
-      "price.js",
-      "popup.html",
-      "style.css"
+      "popup.js"
     ],
-    "notes": "Hệ thống đã nâng cấp toàn diện các tính năng T0, Fibonacci và UI Dashboard."
+    "notes": "Sửa lỗi truyền tham số sai kiểu dữ liệu vào hàm renderSummaryBar và xóa bỏ hàm trùng lặp."
   },
   "recent_changes": [
     {
-      "timestamp": "2026-04-08T17:30:00Z",
-      "type": "audit & fix",
-      "description": "Vá lỗi XSS, cập nhật AI Model mặc định và refactor logic divisor."
+      "timestamp": "2026-04-09T07:50:00Z",
+      "type": "fix",
+      "description": "Sửa lỗi TypeError trong ui.js do truyền totalPnl (number) thay vì portfolio (array)."
     },
     {
-      "timestamp": "2026-04-08T18:00:00Z",
-      "type": "feature",
-      "description": "Triển khai chiến lược Thay nước T0 và phẫu thuật UI Dashboard."
-    },
+      "timestamp": "2026-04-09T07:50:30Z",
+      "type": "refactor",
+      "description": "Xóa hàm updateSummaryBar trùng lặp trong popup.js và import từ ui.js để đồng nhất UI."
+    }
+  ],
+  "errors_encountered": [
     {
-      "timestamp": "2026-04-08T18:15:00Z",
-      "type": "feature",
-      "description": "Tích hợp module Phân tích Fibonacci và Trợ lý AI chủ động."
+      "error": "Uncaught (in promise) TypeError: portfolio.forEach is not a function",
+      "solution": "Đảm bảo truyền mảng portfolio và priceMap khi gọi updateSummaryBar thay vì truyền số totalPnl.",
+      "resolved": true,
+      "file": "ui.js"
     }
   ],
   "decisions_made": [
     {
-      "decision": "Dùng textContent + escapeHTML cho Symbol/Note",
-      "reason": "Ngăn chặn triệt để XSS từ dữ liệu Import."
-    },
-    {
-      "decision": "Trung tâm hóa logic chia 1000 vào getDivisor",
-      "reason": "Dễ bảo trì và đồng nhất kết quả giữa các view."
-    },
-    {
-      "decision": "Cố định Fibonacci daily high/low",
-      "reason": "Phù hợp với giới hạn dữ liệu từ TradingView Scanner API."
+      "decision": "Hợp nhất hàm updateSummaryBar vào ui.js",
+      "reason": "ui.js chứa logic render Dashboard phức tạp hơn (Health Score, Win Rate), popup.js chỉ nên điều khiển luồng dữ liệu."
     }
   ]
 }
