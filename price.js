@@ -33,11 +33,11 @@ export async function fetchPricesMap(symbols) {
 
   try {
     const response = await fetch(
-      "https://scanner.tradingview.com/vietnam/scan",
+      "https://scanner.tradingview.com/global/scan",
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
+          "Content-Type": "text/plain",
         },
         body: JSON.stringify({
           symbols: {
