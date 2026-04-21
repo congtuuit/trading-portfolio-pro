@@ -107,12 +107,41 @@ let currentDCAPrice = null;
 let currentCloseTradeId = null;
 let currentRealizedPnl = 0;
 let handleRollover = null;
+let handleTakeProfit = null; // New handler for partial close
 let handleT0 = null;
+let handleClearHistory = null;
 let lastAnalyzedSym = null;
 let lastAnalyzedData = null;
 
-export function bindRolloverEvents(cb) {
-  handleRollover = cb;
+export function bindCloseEvents(cb) {
+  handleTakeProfit = cb;
+}
+
+export function bindHistoryEvents(cbClear) {
+  handleClearHistory = cbClear;
+  
+  const btnHistory = document.getElementById("btn-history");
+  const modalHistory = document.getElementById("modal-history");
+  const btnCloseHistory = document.getElementById("btn-close-modal-history");
+  const btnClearHistory = document.getElementById("btn-clear-history");
+  
+  if (btnHistory && modalHistory) {
+    btnHistory.addEventListener("click", () => {
+      modalHistory.style.display = "flex";
+    });
+    btnCloseHistory.addEventListener("click", () => modalHistory.style.display = "none");
+    modalHistory.addEventListener("click", (e) => {
+      if (e.target === modalHistory) modalHistory.style.display = "none";
+    });
+  }
+  
+  if (btnClearHistory) {
+    btnClearHistory.addEventListener("click", async () => {
+      if (confirm("Xác nhận xóa hệ thống lịch sử chốt lệnh? Hành động này không thể hoàn tác.")) {
+        if (handleClearHistory) await handleClearHistory();
+      }
+    });
+  }
 }
 
 export function bindT0Events(cb) {
@@ -562,15 +591,48 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}, root
       
       const priceData = priceMap[trade.symbol] || { close: trade.entryPrice };
       const divisor = getDivisor(trade.symbol);
-      const { pnl } = calculatePnL(trade, priceData.close);
       
       currentCloseTradeId = id;
-      currentRealizedPnl = pnl;
       
       root.querySelector("#close-sym").textContent = `${trade.symbol} (${trade.type})`;
+      
+      const inpQty = root.querySelector("#inp-close-qty");
+      const inpPrice = root.querySelector("#inp-close-price");
       const pnlEl = root.querySelector("#close-pnl");
-      pnlEl.textContent = fmtSigned(pnl / 1000); // Divided PnL for display
-      pnlEl.style.color = pnl >= 0 ? "var(--profit)" : "var(--loss)";
+      
+      // Default values
+      inpQty.value = parseFloat(trade.quantity);
+      inpPrice.value = parseFloat(priceData.close) / divisor;
+      
+      // Function to dynamically recalculate PnL
+      const updateDynamicPnl = () => {
+        const q = parseFloat(inpQty.value) || 0;
+        const p = parseFloat(inpPrice.value) || 0;
+        
+        // Full price logic
+        const exitFullPrice = p * divisor;
+        const entryFullPrice = parseFloat(trade.entryPrice);
+        
+        let pnl = 0;
+        if (trade.type === "BUY") {
+           pnl = (exitFullPrice - entryFullPrice) * q;
+        } else {
+           pnl = (entryFullPrice - exitFullPrice) * q;
+        }
+        
+        currentRealizedPnl = pnl;
+        pnlEl.textContent = fmtSigned(pnl / 1000);
+        pnlEl.style.color = pnl >= 0 ? "var(--profit)" : "var(--loss)";
+      };
+      
+      inpQty.removeEventListener("input", updateDynamicPnl);
+      inpPrice.removeEventListener("input", updateDynamicPnl);
+      
+      inpQty.addEventListener("input", updateDynamicPnl);
+      inpPrice.addEventListener("input", updateDynamicPnl);
+      
+      // Initial trigger
+      updateDynamicPnl();
       
       const selTarget = root.querySelector("#sel-merge-target");
       selTarget.innerHTML = '<option value="">-- Chỉ xóa lệnh (Giữ nguyên các mã khác) --</option>';
@@ -723,9 +785,21 @@ export function bindFormEvents(onSave) {
   if (btnConfirmClose) {
     btnConfirmClose.addEventListener("click", async () => {
       const targetId = document.getElementById("sel-merge-target").value;
-      if (handleRollover && currentCloseTradeId) {
+      const closeQty = parseFloat(document.getElementById("inp-close-qty").value);
+      const closePrice = parseFloat(document.getElementById("inp-close-price").value);
+      
+      if (!closeQty || closeQty <= 0) {
+        alert("Khối lượng chốt phải lớn hơn 0");
+        return;
+      }
+      if (!closePrice || closePrice <= 0) {
+        alert("Giá chốt không hợp lệ");
+        return;
+      }
+      
+      if (handleTakeProfit && currentCloseTradeId) {
         btnConfirmClose.textContent = "⏳...";
-        await handleRollover(currentCloseTradeId, targetId, currentRealizedPnl);
+        await handleTakeProfit(currentCloseTradeId, closeQty, closePrice, targetId);
         btnConfirmClose.textContent = "Xác nhận Chốt & Cấn trừ";
       }
       modalClose.style.display = "none";
@@ -1044,4 +1118,77 @@ function clearErrors() {
     el.textContent = "";
     el.style.display = "none";
   });
+}
+
+/**
+ * Render trade history modal.
+ * @param {Array} history
+ */
+export function renderHistory(history, root = document) {
+  const container = root.querySelector("#history-list");
+  const summary = root.querySelector("#history-summary");
+  if (!container || !summary) return;
+
+  if (!history || history.length === 0) {
+    summary.innerHTML = "Chưa có giao dịch chốt lời/lỗ nào.";
+    container.innerHTML = "";
+    return;
+  }
+
+  // Calculate totals
+  let totalRealized = 0;
+  let winCount = 0;
+  let lossCount = 0;
+
+  const htmlBytes = [];
+  
+  // Sort history descending by date
+  const sortedHistory = [...history].sort((a,b) => b.date - a.date);
+
+  sortedHistory.forEach(record => {
+    totalRealized += record.realizedPnl;
+    if (record.realizedPnl >= 0) winCount++;
+    else lossCount++;
+
+    const dateStr = new Date(record.date).toLocaleString("vi-VN");
+    const pnlClass = record.realizedPnl >= 0 ? "profit" : "loss";
+    const typeClass = record.type === "BUY" ? "badge-buy" : "badge-sell";
+    
+    // Convert to display currency bounds
+    const displayPnl = record.realizedPnl / 1000;
+    
+    htmlBytes.push(`
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:8px; margin-bottom:8px;">
+        <div>
+          <div style="font-size:11px; color:var(--text-muted);">${dateStr}</div>
+          <strong style="color:var(--text-primary); margin-right:4px;">${record.symbol}</strong>
+          <span class="badge ${typeClass}" style="font-size:9px;">${record.type}</span>
+          <br/>
+          <span style="font-size:12px; color:var(--text-muted);">Khối lượng:</span> <strong>${fmt(record.qtyClosed)}</strong> 
+          <span style="font-size:12px; color:var(--text-muted); margin-left:8px;">Tại giá:</span> <strong>${fmt(record.closePrice)}</strong>
+        </div>
+        <div style="text-align:right;">
+          <div class="pnl ${pnlClass}" style="font-size:15px;">${fmtSigned(displayPnl)}</div>
+        </div>
+      </div>
+    `);
+  });
+
+  const totalDisplayPnl = totalRealized / 1000;
+  const healthClass = totalRealized >= 0 ? "profit" : "loss";
+  
+  summary.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div>
+        <span style="color:var(--text-muted); font-size:11px;">Tổng Lợi Nhuận Đã Chốt:</span><br/>
+        <strong style="font-size:18px; color:var(--${healthClass});">${fmtSigned(totalDisplayPnl)}</strong>
+      </div>
+      <div style="text-align:right; font-size:12px;">
+        <span style="color:var(--profit);">Thắng: <strong>${winCount}</strong></span> | 
+        <span style="color:var(--loss);">Thua: <strong>${lossCount}</strong></span>
+      </div>
+    </div>
+  `;
+
+  container.innerHTML = htmlBytes.join("");
 }

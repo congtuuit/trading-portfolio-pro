@@ -76,3 +76,28 @@ export async function saveChatHistory(history) {
     chrome.storage.local.set({ [CHAT_HISTORY_KEY]: limitedHistory }, resolve);
   });
 }
+
+const TRADE_HISTORY_KEY = "tpp_trade_history";
+
+/**
+ * Load trade history from storage.
+ * @returns {Promise<Array>}
+ */
+export async function getTradeHistory() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get([TRADE_HISTORY_KEY], (result) => {
+      resolve(result[TRADE_HISTORY_KEY] || []);
+    });
+  });
+}
+
+/**
+ * Save trade history to storage.
+ * @param {Array} history
+ * @returns {Promise<void>}
+ */
+export async function saveTradeHistory(history) {
+  return new Promise((resolve) => {
+    chrome.storage.local.set({ [TRADE_HISTORY_KEY]: history }, resolve);
+  });
+}

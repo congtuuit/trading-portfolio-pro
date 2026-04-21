@@ -10,13 +10,16 @@ import {
   getSettings,
   saveSettings,
   getChatHistory,
-  saveChatHistory
+  saveChatHistory,
+  getTradeHistory,
+  saveTradeHistory
 } from "./storage.js";
 import { getDivisor, escapeHTML } from "./utils.js";
 import {
   renderPortfolio,
   bindFormEvents,
-  bindRolloverEvents,
+  bindCloseEvents,
+  bindHistoryEvents,
   bindT0Events,
   populateForm,
   bindSettingsEvents,
@@ -28,7 +31,8 @@ import {
   openChatPanel,
   removeTypingIndicator,
   updateSummaryBar,
-  renderChatHistory
+  renderChatHistory,
+  renderHistory
 } from "./ui.js";
 import { fetchPricesMap } from "./price.js";
 import { queryAI, fetchModels } from "./ai.js";
@@ -40,6 +44,7 @@ let refreshTimer = null;
 let currentPriceMap = {};
 let appSettings = null;
 let chatHistory = [];
+let tradeHistory = [];
 
 async function updatePricesAndRender() {
   const symbols = portfolio.map((t) => t.symbol);
@@ -140,16 +145,47 @@ function checkProactiveAlerts() {
   });
 }
 
-/** Chốt lời và cấn trừ vị thế */
-async function handleRollover(closeId, targetId, realizedPnl) {
+/** Chốt lời 1 phần hoặc toàn phần và cấn trừ vị thế (Tùy chọn) */
+async function handleTakeProfit(closeId, closeQty, closePrice, targetId) {
+  const index = portfolio.findIndex((t) => t.id === closeId);
+  if (index < 0) return;
+  
+  const trade = portfolio[index];
+  const isBuy = trade.type === "BUY";
+  const divisor = getDivisor(trade.symbol);
+  
+  // Calculate PnL locally in full price
+  const exitFullPrice = closePrice * divisor;
+  const entryFullPrice = parseFloat(trade.entryPrice);
+  
+  let pnl = 0;
+  if (isBuy) {
+    pnl = (exitFullPrice - entryFullPrice) * closeQty;
+  } else {
+    pnl = (entryFullPrice - exitFullPrice) * closeQty;
+  }
+  
+  // 1. Record in History
+  const historyRecord = {
+    id: "hist_" + Date.now().toString() + Math.random().toString().slice(2,5),
+    date: Date.now(),
+    symbol: trade.symbol,
+    type: trade.type,
+    qtyClosed: closeQty,
+    entryPrice: parseFloat(trade.entryPrice) / divisor,
+    closePrice: closePrice,
+    realizedPnl: pnl
+  };
+  tradeHistory.push(historyRecord);
+  await saveTradeHistory(tradeHistory);
+  
+  // 2. Rollover / Cấn trừ (Optional target)
   if (targetId) {
     const target = portfolio.find((t) => t.id === targetId);
     if (target) {
-      const isBuy = target.type === "BUY";
-      const offset = realizedPnl / parseFloat(target.quantity);
-
-      // For BUY: positive PnL lowers entry price. For SELL: positive PnL raises entry price (better).
-      if (isBuy) {
+      const targetIsBuy = target.type === "BUY";
+      const offset = pnl / parseFloat(target.quantity);
+      if (targetIsBuy) {
         target.entryPrice = (parseFloat(target.entryPrice) - offset).toFixed(4);
       } else {
         target.entryPrice = (parseFloat(target.entryPrice) + offset).toFixed(4);
@@ -157,12 +193,29 @@ async function handleRollover(closeId, targetId, realizedPnl) {
     }
   }
 
-  // Remove the closed trade
-  portfolio = portfolio.filter((t) => t.id !== closeId);
+  // 3. Deduct block size from original trade
+  const remainingQty = parseFloat(trade.quantity) - closeQty;
+  if (remainingQty <= 0.000001) {
+    // Closed completely
+    portfolio.splice(index, 1);
+  } else {
+    // Update remaining qty
+    portfolio[index].quantity = remainingQty.toFixed(4);
+  }
 
   await savePortfolio(portfolio);
+  
+  // Re-render
   renderPortfolio(portfolio, handleDelete, handleEdit, currentPriceMap);
   updatePricesAndRender();
+  renderHistory(tradeHistory);
+}
+
+/** Xóa gesamte lịch sử **/
+async function handleClearHistory() {
+  tradeHistory = [];
+  await saveTradeHistory(tradeHistory);
+  renderHistory(tradeHistory);
 }
 
 /** Refresh PnL display without reloading from storage */
@@ -271,10 +324,14 @@ async function init() {
   portfolio = await getPortfolio();
   appSettings = await getSettings();
   chatHistory = await getChatHistory();
+  tradeHistory = await getTradeHistory();
 
   renderChatHistory(chatHistory);
+  renderHistory(tradeHistory);
+  
   bindFormEvents(handleSave);
-  bindRolloverEvents(handleRollover);
+  bindCloseEvents(handleTakeProfit);
+  bindHistoryEvents(handleClearHistory);
   bindT0Events(handleT0);
 
   bindSettingsEvents(
