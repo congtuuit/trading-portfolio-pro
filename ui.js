@@ -117,13 +117,13 @@ export function bindCloseEvents(cb) {
   handleTakeProfit = cb;
 }
 
-export function bindHistoryEvents(cbClear) {
+export function bindHistoryEvents(cbClear, root = document) {
   handleClearHistory = cbClear;
   
-  const btnHistory = document.getElementById("btn-history");
-  const modalHistory = document.getElementById("modal-history");
-  const btnCloseHistory = document.getElementById("btn-close-modal-history");
-  const btnClearHistory = document.getElementById("btn-clear-history");
+  const btnHistory = root.querySelector("#btn-history");
+  const modalHistory = root.querySelector("#modal-history");
+  const btnCloseHistory = root.querySelector("#btn-close-modal-history");
+  const btnClearHistory = root.querySelector("#btn-clear-history");
   
   if (btnHistory && modalHistory) {
     btnHistory.addEventListener("click", () => {
@@ -148,12 +148,12 @@ export function bindT0Events(cb) {
   handleT0 = cb;
 }
 
-export function bindAIEvents(onAskAI) {
-  const btnAskAI = document.getElementById("btn-ask-ai");
+export function bindAIEvents(onAskAI, root = document) {
+  const btnAskAI = root.querySelector("#btn-ask-ai");
   if (btnAskAI) {
     btnAskAI.addEventListener("click", () => {
       if (!lastAnalyzedSym || !lastAnalyzedData) return;
-      onAskAI(lastAnalyzedSym, lastAnalyzedData, document.getElementById("inp-type").value);
+      onAskAI(lastAnalyzedSym, lastAnalyzedData, root.querySelector("#inp-type").value);
     });
   }
 }
@@ -301,25 +301,25 @@ export function bindChatEvents(onSendChat, onClearChat, root = document) {
   }
 }
 
-export function bindSettingsEvents(settings, onSaveSettings, onFetchModels) {
-  const btnSettings = document.getElementById("btn-settings");
-  const modalSettings = document.getElementById("modal-settings");
-  const btnCloseSettings = document.getElementById("btn-close-modal-settings");
-  const btnSaveSettings = document.getElementById("btn-save-settings");
-  const btnFetchModels = document.getElementById("btn-fetch-models");
+export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root = document) {
+  const btnSettings = root.querySelector("#btn-settings");
+  const modalSettings = root.querySelector("#modal-settings");
+  const btnCloseSettings = root.querySelector("#btn-close-modal-settings");
+  const btnSaveSettings = root.querySelector("#btn-save-settings");
+  const btnFetchModels = root.querySelector("#btn-fetch-models");
   
   if (btnSettings && modalSettings) {
     btnSettings.addEventListener("click", () => {
-      document.getElementById("inp-ai-provider").value = settings.aiProvider || "gemini";
-      document.getElementById("inp-ai-model").value = settings.aiModel || "";
-      document.getElementById("inp-api-key").value = settings.apiKey || "";
+      root.querySelector("#inp-ai-provider").value = settings.aiProvider || "gemini";
+      root.querySelector("#inp-ai-model").value = settings.aiModel || "";
+      root.querySelector("#inp-api-key").value = settings.apiKey || "";
       
       // Load Telegram settings
-      document.getElementById("inp-tg-token").value = settings.tgToken || "";
-      document.getElementById("inp-tg-chatid").value = settings.tgChatId || "";
-      document.getElementById("chk-tg-enabled").checked = !!settings.tgEnabled;
+      root.querySelector("#inp-tg-token").value = settings.tgToken || "";
+      root.querySelector("#inp-tg-chatid").value = settings.tgChatId || "";
+      root.querySelector("#chk-tg-enabled").checked = !!settings.tgEnabled;
 
-      const msgEl = document.getElementById("msg-api-key");
+      const msgEl = root.querySelector("#msg-api-key");
       if (msgEl) msgEl.innerHTML = `Lấy Key tại: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent-blue);">Google AI Studio</a> hoặc <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent-blue);">OpenAI</a>`;
       modalSettings.style.display = "flex";
     });
@@ -329,11 +329,11 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels) {
       if (e.target === modalSettings) modalSettings.style.display = "none";
     });
 
-    const btnTestTg = document.getElementById("btn-test-tg");
+    const btnTestTg = root.querySelector("#btn-test-tg");
     if (btnTestTg) {
       btnTestTg.addEventListener("click", async () => {
-        const token = document.getElementById("inp-tg-token").value.trim();
-        const chatId = document.getElementById("inp-tg-chatid").value.trim();
+        const token = root.querySelector("#inp-tg-token").value.trim();
+        const chatId = root.querySelector("#inp-tg-chatid").value.trim();
         if (!token || !chatId) {
           alert("Vui lòng nhập Token và Chat ID trước khi test!");
           return;
@@ -359,9 +359,9 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels) {
     if (btnFetchModels && onFetchModels) {
       btnFetchModels.addEventListener("click", async (e) => {
         e.preventDefault();
-        const provider = document.getElementById("inp-ai-provider").value;
-        const key = document.getElementById("inp-api-key").value.trim();
-        const msgEl = document.getElementById("msg-api-key");
+        const provider = root.querySelector("#inp-ai-provider").value;
+        const key = root.querySelector("#inp-api-key").value.trim();
+        const msgEl = root.querySelector("#msg-api-key");
         
         if (!key) {
           msgEl.innerHTML = `<span style="color:var(--loss);">Vui lòng nhập API Key trước khi Fetch.</span>`;
@@ -374,7 +374,7 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels) {
         
         try {
           const models = await onFetchModels(provider, key);
-          const datalist = document.getElementById("ai-models-list");
+          const datalist = root.querySelector("#ai-models-list");
           datalist.innerHTML = "";
           models.forEach(m => {
             const opt = document.createElement("option");
@@ -384,7 +384,7 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels) {
           
           msgEl.innerHTML = `<span style="color:var(--profit);">Đã tải ${models.length} options thành công. Bấm xuống ô Tên Model để chọn.</span>`;
           
-          const inpModel = document.getElementById("inp-ai-model");
+          const inpModel = root.querySelector("#inp-ai-model");
           if (!inpModel.value && models.length > 0) {
              const defaultModel = models.find(m => m.includes("flash") || m.includes("gpt-4o")) || models[0];
              inpModel.value = defaultModel;
@@ -399,18 +399,18 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels) {
     }
 
     btnSaveSettings.addEventListener("click", async () => {
-      const provider = document.getElementById("inp-ai-provider").value;
-      const model = document.getElementById("inp-ai-model").value.trim();
-      const key = document.getElementById("inp-api-key").value.trim();
+      const provider = root.querySelector("#inp-ai-provider").value;
+      const model = root.querySelector("#inp-ai-model").value.trim();
+      const key = root.querySelector("#inp-api-key").value.trim();
 
       settings.aiProvider = provider;
       settings.aiModel = model;
       settings.apiKey = key;
 
       // Save Telegram settings
-      settings.tgToken = document.getElementById("inp-tg-token").value.trim();
-      settings.tgChatId = document.getElementById("inp-tg-chatid").value.trim();
-      settings.tgEnabled = document.getElementById("chk-tg-enabled").checked;
+      settings.tgToken = root.querySelector("#inp-tg-token").value.trim();
+      settings.tgChatId = root.querySelector("#inp-tg-chatid").value.trim();
+      settings.tgEnabled = root.querySelector("#chk-tg-enabled").checked;
 
       await onSaveSettings(settings);
       modalSettings.style.display = "none";
@@ -760,20 +760,20 @@ export function updateSummaryBar(portfolio, priceMap, root = document) {
  *
  * @param {Function} onSave - (tradeData) => Promise<void>
  */
-export function bindFormEvents(onSave) {
-  const form = document.getElementById("trade-form");
-  const symIn = document.getElementById("inp-symbol");
-  const btnCancel = document.getElementById("btn-cancel");
-  const btnToggle = document.getElementById("btn-toggle-form");
-  const formSection = document.getElementById("form-section");
+export function bindFormEvents(onSave, root = document) {
+  const form = root.querySelector("#trade-form");
+  const symIn = root.querySelector("#inp-symbol");
+  const btnCancel = root.querySelector("#btn-cancel");
+  const btnToggle = root.querySelector("#btn-toggle-form");
+  const formSection = root.querySelector("#form-section");
 
-  const btnAnalyze = document.getElementById("btn-analyze");
-  const analysisCard = document.getElementById("analysis-card");
-  const typeSelect = document.getElementById("inp-type");
+  const btnAnalyze = root.querySelector("#btn-analyze");
+  const analysisCard = root.querySelector("#analysis-card");
+  const typeSelect = root.querySelector("#inp-type");
 
-  const modalClose = document.getElementById("modal-close");
-  const btnCloseModalClose = document.getElementById("btn-close-modal-close");
-  const btnConfirmClose = document.getElementById("btn-confirm-close");
+  const modalClose = root.querySelector("#modal-close");
+  const btnCloseModalClose = root.querySelector("#btn-close-modal-close");
+  const btnConfirmClose = root.querySelector("#btn-confirm-close");
 
   if (modalClose && btnCloseModalClose) {
     btnCloseModalClose.addEventListener("click", () => modalClose.style.display = "none");
@@ -784,9 +784,9 @@ export function bindFormEvents(onSave) {
 
   if (btnConfirmClose) {
     btnConfirmClose.addEventListener("click", async () => {
-      const targetId = document.getElementById("sel-merge-target").value;
-      const closeQty = parseFloat(document.getElementById("inp-close-qty").value);
-      const closePrice = parseFloat(document.getElementById("inp-close-price").value);
+      const targetId = root.querySelector("#sel-merge-target").value;
+      const closeQty = parseFloat(root.querySelector("#inp-close-qty").value);
+      const closePrice = parseFloat(root.querySelector("#inp-close-price").value);
       
       if (!closeQty || closeQty <= 0) {
         alert("Khối lượng chốt phải lớn hơn 0");
@@ -806,8 +806,8 @@ export function bindFormEvents(onSave) {
     });
   }
 
-  const modalAnalysis = document.getElementById("modal-analysis");
-  const btnCloseModal = document.getElementById("btn-close-modal");
+  const modalAnalysis = root.querySelector("#modal-analysis");
+  const btnCloseModal = root.querySelector("#btn-close-modal");
 
   if (modalAnalysis && btnCloseModal) {
     btnCloseModal.addEventListener("click", () => {
@@ -820,9 +820,9 @@ export function bindFormEvents(onSave) {
     });
   }
 
-  const modalDCA = document.getElementById("modal-dca");
-  const btnCloseDCA = document.getElementById("btn-close-dca");
-  const inpDCA = document.getElementById("inp-dca-qty");
+  const modalDCA = root.querySelector("#modal-dca");
+  const btnCloseDCA = root.querySelector("#btn-close-dca");
+  const inpDCA = root.querySelector("#inp-dca-qty");
 
   if (modalDCA && btnCloseDCA) {
     btnCloseDCA.addEventListener("click", () => modalDCA.style.display = "none");
@@ -842,7 +842,7 @@ export function bindFormEvents(onSave) {
       const isBuy = currentDCATrade.type === "BUY";
       
       if (addQty <= 0) {
-        document.getElementById("dca-result").innerHTML = "Hãy nhập số lượng mua/bán thêm để xem kịch bản hòa vốn.";
+        root.querySelector("#dca-result").innerHTML = "Hãy nhập số lượng mua/bán thêm để xem kịch bản hòa vốn.";
         return;
       }
       
@@ -854,7 +854,7 @@ export function bindFormEvents(onSave) {
         const bounceNeeded = ((newAvg - currentDCAPrice) / currentDCAPrice) * 100;
         const oldBounceNeeded = ((entryPrice - currentDCAPrice) / currentDCAPrice) * 100;
         
-        document.getElementById("dca-result").innerHTML = `
+        root.querySelector("#dca-result").innerHTML = `
           <strong>Giá Trung Bình Mới:</strong> <span style="font-size:14px;color:var(--text-primary);">${fmt(newAvg / (divisor || 1))}</span><br/>
           <div style="margin-top:8px;">Để hòa vốn, tổng danh mục cài mới cần tăng: <strong style="color:var(--profit);">+${fmt(bounceNeeded)}%</strong> <br/>
           <i style="color:var(--text-muted);font-size:11px;">(Thay vì +${fmt(oldBounceNeeded)}% như cũ)</i></div>
@@ -863,7 +863,7 @@ export function bindFormEvents(onSave) {
         const dropNeeded = ((currentDCAPrice - newAvg) / currentDCAPrice) * 100;
         const oldDropNeeded = ((currentDCAPrice - entryPrice) / currentDCAPrice) * 100;
         
-        document.getElementById("dca-result").innerHTML = `
+        root.querySelector("#dca-result").innerHTML = `
           <strong>Giá Trung Bình Mới:</strong> <span style="font-size:14px;color:var(--text-primary);">${fmt(newAvg / (divisor || 1))}</span><br/>
           <div style="margin-top:8px;">Để hòa vốn, tổng danh mục cài mới cần sập: <strong style="color:var(--profit);">${fmtSigned(-dropNeeded)}%</strong> <br/>
           <i style="color:var(--text-muted);font-size:11px;">(Thay vì ${fmtSigned(-oldDropNeeded)}% như cũ)</i></div>
@@ -889,23 +889,23 @@ export function bindFormEvents(onSave) {
       });
       t0Html += `</div>`;
 
-      document.getElementById("dca-result").innerHTML += t0Html;
+      root.querySelector("#dca-result").innerHTML += t0Html;
 
       // Show T0 confirmation area with the 3% scenario as preview
-      const t0Area = document.getElementById("t0-action-area");
-      const t0Details = document.getElementById("t0-details");
+      const t0Area = root.querySelector("#t0-action-area");
+      const t0Details = root.querySelector("#t0-details");
       if (t0Area && bestScenario) {
         const divisor = getDivisor(currentDCATrade.symbol);
         t0Area.style.display = "block";
         t0Details.innerHTML = `Giả định lướt <strong>${fmt(addQty)}</strong> units với lợi nhuận 3% (+${fmt(bestScenario.totalProfit / 1000)}), giá vốn mã gốc sẽ hạ từ ${fmt(parseFloat(currentDCATrade.entryPrice) / divisor)} xuống <strong>${fmt(bestScenario.newEntry / divisor)}</strong>.`;
         
         // Setup the one-time confirm event
-        const btnT0 = document.getElementById("btn-confirm-t0");
+        const btnT0 = root.querySelector("#btn-confirm-t0");
         btnT0.onclick = async () => {
            if (handleT0) {
              btnT0.textContent = "⏳...";
              await handleT0(currentDCATrade.id, bestScenario.newEntry, bestScenario.totalProfit);
-             document.getElementById("modal-dca").style.display = "none";
+             root.querySelector("#modal-dca").style.display = "none";
              btnT0.textContent = "Xác nhận đã lướt T0 thành công";
            }
         };
@@ -938,7 +938,7 @@ export function bindFormEvents(onSave) {
         const atr = (data.atr || 0) / divisor;
 
         // Auto-fill entry price
-        document.getElementById("inp-entry").value = currentPrice;
+        root.querySelector("#inp-entry").value = currentPrice;
 
         // Auto-fill SL / TP based on ATR
         if (atr > 0) {
@@ -947,13 +947,13 @@ export function bindFormEvents(onSave) {
           if (typeSelect.value === "BUY") {
             const sl = currentPrice - atr * sl_atr_mult;
             const tp = currentPrice + (currentPrice - sl) * rr_ratio;
-            document.getElementById("inp-sl").value = sl.toFixed(2);
-            document.getElementById("inp-tp").value = tp.toFixed(2);
+            root.querySelector("#inp-sl").value = sl.toFixed(2);
+            root.querySelector("#inp-tp").value = tp.toFixed(2);
           } else {
             const sl = currentPrice + atr * sl_atr_mult;
             const tp = currentPrice - (sl - currentPrice) * rr_ratio;
-            document.getElementById("inp-sl").value = sl.toFixed(2);
-            document.getElementById("inp-tp").value = tp.toFixed(2);
+            root.querySelector("#inp-sl").value = sl.toFixed(2);
+            root.querySelector("#inp-tp").value = tp.toFixed(2);
           }
         }
 
@@ -962,7 +962,7 @@ export function bindFormEvents(onSave) {
 
         const analysisHtml = getAnalysisHTML(sym, data, typeSelect.value);
 
-        const contentDiv = document.getElementById("analysis-card-content");
+        const contentDiv = root.querySelector("#analysis-card-content");
         if (contentDiv) {
           contentDiv.innerHTML = `
             ${analysisHtml}
@@ -970,7 +970,7 @@ export function bindFormEvents(onSave) {
           `;
         }
         
-        const aiResp = document.getElementById("ai-response");
+        const aiResp = root.querySelector("#ai-response");
         if (aiResp) {
           aiResp.style.display = "none";
           aiResp.innerHTML = "";
@@ -1017,14 +1017,14 @@ export function bindFormEvents(onSave) {
 
     const symbol = symIn.value.trim().toUpperCase();
     const divisor = getDivisor(symbol);
-    const type = document.getElementById("inp-type").value;
-    const quantity = parseFloat(document.getElementById("inp-qty").value) || 1;
-    let entryPrice = parseFloat(document.getElementById("inp-entry").value);
+    const type = root.querySelector("#inp-type").value;
+    const quantity = parseFloat(root.querySelector("#inp-qty").value) || 1;
+    let entryPrice = parseFloat(root.querySelector("#inp-entry").value);
     let stopLoss =
-      parseFloat(document.getElementById("inp-sl").value) || null;
+      parseFloat(root.querySelector("#inp-sl").value) || null;
     let takeProfit =
-      parseFloat(document.getElementById("inp-tp").value) || null;
-    const note = document.getElementById("inp-note").value.trim();
+      parseFloat(root.querySelector("#inp-tp").value) || null;
+    const note = root.querySelector("#inp-note").value.trim();
 
     // Data normalization: Store at full price
     if (entryPrice) entryPrice *= divisor;
@@ -1042,7 +1042,7 @@ export function bindFormEvents(onSave) {
     }
     if (!valid) return;
 
-    const btnSubmit = document.getElementById("btn-submit");
+    const btnSubmit = root.querySelector("#btn-submit");
     const originalText = btnSubmit.textContent;
     btnSubmit.textContent = "Checking...";
     btnSubmit.disabled = true;
@@ -1070,39 +1070,39 @@ export function bindFormEvents(onSave) {
   });
 }
 
-export function populateForm(trade) {
+export function populateForm(trade, root = document) {
   currentEditId = trade.id;
   const divisor = getDivisor(trade.symbol);
-  document.getElementById("inp-symbol").value = trade.symbol;
-  document.getElementById("inp-type").value = trade.type;
-  document.getElementById("inp-qty").value = trade.quantity;
-  document.getElementById("inp-entry").value = trade.entryPrice / divisor;
-  document.getElementById("inp-sl").value = trade.stopLoss ? (trade.stopLoss / divisor) : "";
-  document.getElementById("inp-tp").value = trade.takeProfit ? (trade.takeProfit / divisor) : "";
-  document.getElementById("inp-note").value = trade.note || "";
+  root.querySelector("#inp-symbol").value = trade.symbol;
+  root.querySelector("#inp-type").value = trade.type;
+  root.querySelector("#inp-qty").value = trade.quantity;
+  root.querySelector("#inp-entry").value = trade.entryPrice / divisor;
+  root.querySelector("#inp-sl").value = trade.stopLoss ? (trade.stopLoss / divisor) : "";
+  root.querySelector("#inp-tp").value = trade.takeProfit ? (trade.takeProfit / divisor) : "";
+  root.querySelector("#inp-note").value = trade.note || "";
 
-  document.getElementById("form-title").textContent = "✏️ Edit Position";
-  document.getElementById("btn-submit").textContent = "Update Position";
-  document.getElementById("btn-cancel").style.display = "block";
+  root.querySelector("#form-title").textContent = "✏️ Edit Position";
+  root.querySelector("#btn-submit").textContent = "Update Position";
+  root.querySelector("#btn-cancel").style.display = "block";
 
-  document.getElementById("form-section").style.display = "block";
-  document.getElementById("btn-toggle-form").style.display = "none";
+  root.querySelector("#form-section").style.display = "block";
+  root.querySelector("#btn-toggle-form").style.display = "none";
 
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function resetFormUI() {
   currentEditId = null;
-  document.getElementById("trade-form").reset();
-  document.getElementById("form-title").textContent = "➕ New Position";
-  document.getElementById("btn-submit").textContent = "Add Position";
-  document.getElementById("btn-cancel").style.display = "none";
+  root.querySelector("#trade-form").reset();
+  root.querySelector("#form-title").textContent = "➕ New Position";
+  root.querySelector("#btn-submit").textContent = "Add Position";
+  root.querySelector("#btn-cancel").style.display = "none";
   
-  const analysisCard = document.getElementById("analysis-card");
+  const analysisCard = root.querySelector("#analysis-card");
   if (analysisCard) analysisCard.style.display = "none";
 
-  document.getElementById("form-section").style.display = "none";
-  document.getElementById("btn-toggle-form").style.display = "block";
+  root.querySelector("#form-section").style.display = "none";
+  root.querySelector("#btn-toggle-form").style.display = "block";
 }
 
 function showError(id, msg) {
@@ -1113,8 +1113,8 @@ function showError(id, msg) {
   }
 }
 
-function clearErrors() {
-  document.querySelectorAll(".field-error").forEach((el) => {
+export function clearErrors(root = document) {
+  root.querySelectorAll(".field-error").forEach((el) => {
     el.textContent = "";
     el.style.display = "none";
   });

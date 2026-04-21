@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Trading Portfolio Pro</title>
   <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
 
   <!-- ── Header ── -->
@@ -13,14 +15,24 @@
     <div style="display:flex;align-items:center;gap:8px;">
       <img src="icons/tradingview-logo.png" alt="logo" style="width:20px;height:20px;border-radius:4px;" />
       <h1>Trading Portfolio Pro</h1>
-    <div style="display:flex;align-items:center;gap:6px;">
-      <button id="btn-ai-portfolio" class="btn" style="background:linear-gradient(90deg, #1A73E8, #8E24AA);color:white;padding:4px 8px;font-size:12px;" title="AI Đánh giá toàn bộ danh mục">🤖</button>
-      <button id="btn-settings" class="btn" style="background:var(--bg-input);color:var(--text-primary);padding:4px 8px;font-size:12px;" title="Settings">⚙️</button>
-      <button id="btn-import" class="btn" style="background:var(--bg-input);color:var(--text-primary);padding:4px 8px;font-size:12px;" title="Import JSON">⬆️</button>
-      <button id="btn-export" class="btn" style="background:var(--bg-input);color:var(--text-primary);padding:4px 8px;font-size:12px;" title="Export JSON">⬇️</button>
-      <button id="btn-history" class="btn" style="background:var(--bg-input);color:var(--text-primary);padding:4px 8px;font-size:12px;" title="Lịch sử chốt lệnh">📋</button>
-      <span id="total-pnl" class="total-pnl">Total PnL: 0.00</span>
-    </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button id="btn-ai-portfolio" class="btn"
+          style="background:linear-gradient(90deg, #1A73E8, #8E24AA);color:white;padding:4px 8px;font-size:12px;"
+          title="AI Đánh giá toàn bộ danh mục">🤖</button>
+        <button id="btn-settings" class="btn"
+          style="background:var(--bg-input);color:var(--text-primary);padding:4px 8px;font-size:12px;"
+          title="Settings">⚙️</button>
+        <button id="btn-import" class="btn"
+          style="background:var(--bg-input);color:var(--text-primary);padding:4px 8px;font-size:12px;"
+          title="Import JSON">⬆️</button>
+        <button id="btn-export" class="btn"
+          style="background:var(--bg-input);color:var(--text-primary);padding:4px 8px;font-size:12px;"
+          title="Export JSON">⬇️</button>
+        <button id="btn-history" class="btn"
+          style="background:var(--bg-input);color:var(--text-primary);padding:4px 8px;font-size:12px;"
+          title="Lịch sử chốt lệnh">📋</button>
+        <span id="total-pnl" class="total-pnl">Total PnL: 0.00</span>
+      </div>
   </header>
 
   <!-- ── Add Trade Form ── -->
@@ -35,15 +47,19 @@
           <label for="inp-symbol">Symbol *</label>
           <div style="display:flex;gap:4px;">
             <input id="inp-symbol" type="text" placeholder="HOSE:HCM" maxlength="20" />
-            <button type="button" id="btn-analyze" class="btn" style="background:#4c9ce2;color:#fff;">Khám (Analyze)</button>
+            <button type="button" id="btn-analyze" class="btn" style="background:#4c9ce2;color:#fff;">Khám
+              (Analyze)</button>
           </div>
           <span id="err-symbol" class="field-error"></span>
         </div>
 
-        <div id="analysis-card" class="field full-width" style="display:none; padding:8px; border-radius:6px; font-size:11px; margin-bottom: 4px; border: 1px solid var(--border-focus); background: rgba(76, 156, 226, 0.1);">
+        <div id="analysis-card" class="field full-width"
+          style="display:none; padding:8px; border-radius:6px; font-size:11px; margin-bottom: 4px; border: 1px solid var(--border-focus); background: rgba(76, 156, 226, 0.1);">
           <div id="analysis-card-content"></div>
           <div style="margin-top:8px; display:flex; justify-content:flex-end;">
-            <button type="button" id="btn-ask-ai" class="btn" style="background:linear-gradient(90deg, #1A73E8, #8E24AA); color:white; font-size:11px; padding:4px 8px;">Ask AI 🤖</button>
+            <button type="button" id="btn-ask-ai" class="btn"
+              style="background:linear-gradient(90deg, #1A73E8, #8E24AA); color:white; font-size:11px; padding:4px 8px;">Ask
+              AI 🤖</button>
           </div>
         </div>
 
@@ -91,7 +107,8 @@
 
       <div style="display: flex; gap: 8px; margin-top: 10px;">
         <button type="submit" id="btn-submit" class="btn-add" style="margin-top: 0; flex: 1;">Add Position</button>
-        <button type="button" id="btn-cancel" class="btn-add" style="margin-top: 0; flex: 1; display: none; background: var(--bg-hover);">Cancel</button>
+        <button type="button" id="btn-cancel" class="btn-add"
+          style="margin-top: 0; flex: 1; display: none; background: var(--bg-hover);">Cancel</button>
       </div>
     </form>
   </section>
@@ -100,17 +117,22 @@
   <section class="list-section">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
       <div class="list-title" style="margin-bottom: 0;">📋 Portfolio</div>
-      <button id="btn-toggle-form" class="btn" style="background: var(--accent-blue); color: white;">➕ New Position</button>
+      <button id="btn-toggle-form" class="btn" style="background: var(--accent-blue); color: white;">➕ New
+        Position</button>
     </div>
     <div id="portfolio-list"></div>
   </section>
 
   <!-- Analysis Modal -->
-  <div id="modal-analysis" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:100; align-items:center; justify-content:center; padding:16px;">
-    <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; width:100%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.5); display:flex; flex-direction:column;">
-      <div style="padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+  <div id="modal-analysis" class="modal-overlay"
+    style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:100; align-items:center; justify-content:center; padding:16px;">
+    <div
+      style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; width:100%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.5); display:flex; flex-direction:column;">
+      <div
+        style="padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
         <h3 id="modal-title" style="margin:0; font-size:14px; color:var(--text-primary);">Phân Tích Kỹ Thuật</h3>
-        <button id="btn-close-modal" style="background:transparent; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0; line-height:1;">&times;</button>
+        <button id="btn-close-modal"
+          style="background:transparent; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0; line-height:1;">&times;</button>
       </div>
       <div id="modal-body" style="padding:16px; font-size:13px; line-height:1.5;">
         <!-- injected by ui.js -->
@@ -119,17 +141,24 @@
   </div>
 
   <!-- DCA Modal -->
-  <div id="modal-dca" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:110; align-items:center; justify-content:center; padding:16px;">
-    <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; width:100%; max-width:400px; max-height:90vh; overflow-y:auto; box-shadow:0 10px 30px rgba(0,0,0,0.8); display:flex; flex-direction:column;">
-      <div style="padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+  <div id="modal-dca" class="modal-overlay"
+    style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:110; align-items:center; justify-content:center; padding:16px;">
+    <div
+      style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; width:100%; max-width:400px; max-height:90vh; overflow-y:auto; box-shadow:0 10px 30px rgba(0,0,0,0.8); display:flex; flex-direction:column;">
+      <div
+        style="padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
         <h3 id="dca-title" style="margin:0; font-size:14px; color:var(--text-primary);">🧮 Gỡ Lỗ (DCA)</h3>
         <div style="display:flex; gap:8px; align-items:center;">
-          <button id="btn-ai-dca" class="btn" style="background:linear-gradient(90deg, #1A73E8, #8E24AA); color:white; font-size:11px; padding:4px 8px;">Hỏi AI Cứu Viện 🤖</button>
-          <button id="btn-close-dca" style="background:transparent; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0; line-height:1;">&times;</button>
+          <button id="btn-ai-dca" class="btn"
+            style="background:linear-gradient(90deg, #1A73E8, #8E24AA); color:white; font-size:11px; padding:4px 8px;">Hỏi
+            AI Cứu Viện 🤖</button>
+          <button id="btn-close-dca"
+            style="background:transparent; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0; line-height:1;">&times;</button>
         </div>
       </div>
       <div style="padding:16px; font-size:13px; line-height:1.5;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--border);">
+        <div
+          style="display:flex; justify-content:space-between; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--border);">
           <div>
             <div style="color:var(--text-muted);font-size:11px;">Vị trí hiện tại</div>
             <strong id="dca-qty">--</strong> @ <strong id="dca-entry">--</strong>
@@ -139,40 +168,51 @@
             <strong id="dca-current">--</strong>
           </div>
         </div>
-        
+
         <div class="field" style="margin-bottom:0;">
           <label for="inp-dca-qty">Thêm khối lượng giao dịch (Units):</label>
           <input type="number" id="inp-dca-qty" step="any" min="0" placeholder="VD: 100" style="padding:8px;" />
         </div>
-        
-        <div id="dca-result" style="margin-top:16px; padding:12px; background:rgba(255, 152, 0, 0.1); border:1px solid rgba(255, 152, 0, 0.3); border-radius:6px;">
+
+        <div id="dca-result"
+          style="margin-top:16px; padding:12px; background:rgba(255, 152, 0, 0.1); border:1px solid rgba(255, 152, 0, 0.3); border-radius:6px;">
           Hãy nhập số lượng mua/bán thêm để xem kịch bản hòa vốn.
         </div>
 
         <!-- Area for T0 Actions -->
-        <div id="t0-action-area" style="display:none; margin-top:12px; padding:12px; border:1px solid var(--profit); border-radius:6px; background:rgba(38,166,154,0.1);">
-           <div id="t0-details" style="font-size:12px; margin-bottom:10px;"></div>
-           <button id="btn-confirm-t0" class="btn" style="background:var(--profit); color:white; width:100%; padding:8px;">Xác nhận đã lướt T0 thành công</button>
-           <i style="display:block; font-size:10px; color:var(--text-muted); margin-top:4px; text-align:center;">(App sẽ tự động trừ lãi lướt vào giá vốn của mã này)</i>
+        <div id="t0-action-area"
+          style="display:none; margin-top:12px; padding:12px; border:1px solid var(--profit); border-radius:6px; background:rgba(38,166,154,0.1);">
+          <div id="t0-details" style="font-size:12px; margin-bottom:10px;"></div>
+          <button id="btn-confirm-t0" class="btn"
+            style="background:var(--profit); color:white; width:100%; padding:8px;">Xác nhận đã lướt T0 thành
+            công</button>
+          <i style="display:block; font-size:10px; color:var(--text-muted); margin-top:4px; text-align:center;">(App sẽ
+            tự động trừ lãi lướt vào giá vốn của mã này)</i>
         </div>
       </div>
     </div>
   </div>
 
   <!-- Close Position / Rollover Modal -->
-  <div id="modal-close" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:120; align-items:center; justify-content:center; padding:16px;">
-    <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; width:100%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.8); display:flex; flex-direction:column;">
-      <div style="padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+  <div id="modal-close" class="modal-overlay"
+    style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:120; align-items:center; justify-content:center; padding:16px;">
+    <div
+      style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; width:100%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.8); display:flex; flex-direction:column;">
+      <div
+        style="padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
         <h3 style="margin:0; font-size:14px; color:var(--text-primary);">💰 Chốt Vị Thế (T0)</h3>
-        <button id="btn-close-modal-close" style="background:transparent; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0; line-height:1;">&times;</button>
+        <button id="btn-close-modal-close"
+          style="background:transparent; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0; line-height:1;">&times;</button>
       </div>
       <div style="padding:16px; font-size:13px; line-height:1.5;">
-        <div style="margin-bottom:12px; padding:12px; border-radius:6px; background:rgba(38,166,154,0.1); border:1px solid rgba(38,166,154,0.3);">
-          Lệnh: <strong id="close-sym"></strong><br/>
-          Lợi nhuận đang có (tạm tính): <strong id="close-pnl" style="font-size:14px;"></strong><br/>
-          <span style="font-size:11px;color:var(--text-muted);">(Lợi nhuận sẽ thay đổi theo Giá chốt và Số lượng chốt).</span>
+        <div
+          style="margin-bottom:12px; padding:12px; border-radius:6px; background:rgba(38,166,154,0.1); border:1px solid rgba(38,166,154,0.3);">
+          Lệnh: <strong id="close-sym"></strong><br />
+          Lợi nhuận đang có (tạm tính): <strong id="close-pnl" style="font-size:14px;"></strong><br />
+          <span style="font-size:11px;color:var(--text-muted);">(Lợi nhuận sẽ thay đổi theo Giá chốt và Số lượng
+            chốt).</span>
         </div>
-        
+
         <div class="field" style="margin-bottom:12px;">
           <label for="inp-close-qty">Khối lượng muốn chốt:</label>
           <input type="number" id="inp-close-qty" step="any" min="0.0001" style="padding:8px;" />
@@ -184,50 +224,65 @@
 
         <div class="field" style="margin-bottom:0;">
           <label for="sel-merge-target">Cấn trừ phần Lãi/Lỗ này vào mã gốc để hạ giá vốn:</label>
-          <select id="sel-merge-target" class="full-width" style="padding:8px; background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px;">
+          <select id="sel-merge-target" class="full-width"
+            style="padding:8px; background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px;">
             <option value="">-- Chỉ xóa lệnh (Giữ nguyên các mã khác) --</option>
           </select>
         </div>
-        
+
         <div style="margin-top:20px;">
-          <button id="btn-confirm-close" class="btn" style="background:var(--profit); width:100%; color:white; padding:10px; font-size:13px; font-weight:bold;">Xác nhận Chốt & Cấn trừ</button>
+          <button id="btn-confirm-close" class="btn"
+            style="background:var(--profit); width:100%; color:white; padding:10px; font-size:13px; font-weight:bold;">Xác
+            nhận Chốt & Cấn trừ</button>
         </div>
       </div>
     </div>
   </div>
 
   <!-- History Modal -->
-  <div id="modal-history" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:150; align-items:center; justify-content:center; padding:16px;">
-    <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; width:100%; max-width:600px; max-height:90vh; overflow-y:auto; box-shadow:0 10px 30px rgba(0,0,0,0.8); display:flex; flex-direction:column;">
-      <div style="padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+  <div id="modal-history" class="modal-overlay"
+    style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:150; align-items:center; justify-content:center; padding:16px;">
+    <div
+      style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; width:100%; max-width:600px; max-height:90vh; overflow-y:auto; box-shadow:0 10px 30px rgba(0,0,0,0.8); display:flex; flex-direction:column;">
+      <div
+        style="padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
         <h3 style="margin:0; font-size:14px; color:var(--text-primary);">📋 Lịch Sử Giao Dịch</h3>
-        <button id="btn-close-modal-history" style="background:transparent; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0; line-height:1;">&times;</button>
+        <button id="btn-close-modal-history"
+          style="background:transparent; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0; line-height:1;">&times;</button>
       </div>
       <div style="padding:16px; font-size:13px; line-height:1.5;">
-        <div id="history-summary" style="margin-bottom:16px; padding:12px; background:rgba(255,255,255,0.05); border-radius:6px; border:1px solid var(--border);">
+        <div id="history-summary"
+          style="margin-bottom:16px; padding:12px; background:rgba(255,255,255,0.05); border-radius:6px; border:1px solid var(--border);">
           <!-- Summary to be injected -->
         </div>
         <div id="history-list">
           <!-- History items injected by ui.js -->
         </div>
         <div style="text-align:right; margin-top:12px;">
-           <button id="btn-clear-history" class="btn" style="background:var(--loss); color:white; padding:6px 12px; font-size:11px;">🗑 Xóa Toàn Bộ Lịch Sử</button>
+          <button id="btn-clear-history" class="btn"
+            style="background:var(--loss); color:white; padding:6px 12px; font-size:11px;">🗑 Xóa Toàn Bộ Lịch
+            Sử</button>
         </div>
       </div>
     </div>
   </div>
 
   <!-- Settings Modal -->
-  <div id="modal-settings" class="modal-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:200; align-items:center; justify-content:center; padding:16px;">
-    <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; width:100%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.8); display:flex; flex-direction:column;">
-      <div style="padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+  <div id="modal-settings" class="modal-overlay"
+    style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:200; align-items:center; justify-content:center; padding:16px;">
+    <div
+      style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; width:100%; max-width:400px; box-shadow:0 10px 30px rgba(0,0,0,0.8); display:flex; flex-direction:column;">
+      <div
+        style="padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
         <h3 style="margin:0; font-size:14px; color:var(--text-primary);">⚙️ Cấu Hình Hệ Thống</h3>
-        <button id="btn-close-modal-settings" style="background:transparent; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0; line-height:1;">&times;</button>
+        <button id="btn-close-modal-settings"
+          style="background:transparent; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0; line-height:1;">&times;</button>
       </div>
       <div style="padding:16px; font-size:13px; line-height:1.5;">
         <div class="field">
           <label>Nhà cung cấp AI:</label>
-          <select id="inp-ai-provider" class="full-width" style="padding:8px; background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px;">
+          <select id="inp-ai-provider" class="full-width"
+            style="padding:8px; background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px;">
             <option value="gemini">Google Gemini</option>
             <option value="openai">OpenAI (ChatGPT)</option>
           </select>
@@ -235,76 +290,108 @@
         <div class="field" style="margin-top:12px;">
           <label>API Key:</label>
           <div style="display:flex; gap:8px;">
-            <input type="password" id="inp-api-key" class="full-width" style="padding:8px;" placeholder="Dán API Key vào đây..." />
-            <button id="btn-fetch-models" class="btn" style="background:var(--bg-hover); color:var(--text-primary); border:1px solid var(--border); padding:8px;" title="Lấy danh sách Models">🔄 Fetch</button>
+            <input type="password" id="inp-api-key" class="full-width" style="padding:8px;"
+              placeholder="Dán API Key vào đây..." />
+            <button id="btn-fetch-models" class="btn"
+              style="background:var(--bg-hover); color:var(--text-primary); border:1px solid var(--border); padding:8px;"
+              title="Lấy danh sách Models">🔄 Fetch</button>
           </div>
-          <i id="msg-api-key" style="color:var(--text-muted); font-size:11px; display:block; margin-top:4px;">Lấy Key tại: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent-blue);">Google AI Studio</a> hoặc <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent-blue);">OpenAI</a></i>
+          <i id="msg-api-key" style="color:var(--text-muted); font-size:11px; display:block; margin-top:4px;">Lấy Key
+            tại: <a href="https://aistudio.google.com/app/apikey" target="_blank"
+              style="color:var(--accent-blue);">Google AI Studio</a> hoặc <a href="https://platform.openai.com/api-keys"
+              target="_blank" style="color:var(--accent-blue);">OpenAI</a></i>
         </div>
         <div class="field" style="margin-top:12px;">
           <label>Tên Model (Tùy chọn):</label>
-          <input type="text" id="inp-ai-model" list="ai-models-list" class="full-width" style="padding:8px;" placeholder="Bấm 🔄 Fetch rồi chọn, hoặc tự gõ model..." />
+          <input type="text" id="inp-ai-model" list="ai-models-list" class="full-width" style="padding:8px;"
+            placeholder="Bấm 🔄 Fetch rồi chọn, hoặc tự gõ model..." />
           <datalist id="ai-models-list"></datalist>
-          <i style="color:var(--text-muted); font-size:11px; display:block; margin-top:4px;">Mặc định: gemini-2.5-flash (Gemini) hoặc gpt-4o-mini (OpenAI)</i>
+          <i style="color:var(--text-muted); font-size:11px; display:block; margin-top:4px;">Mặc định: gemini-2.5-flash
+            (Gemini) hoặc gpt-4o-mini (OpenAI)</i>
         </div>
 
         <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
-          <h4 style="margin:0 0 8px 0; font-size:12px; color:var(--text-primary);">🤖 Telegram Notification (Broker)</h4>
+          <h4 style="margin:0 0 8px 0; font-size:12px; color:var(--text-primary);">🤖 Telegram Notification (Broker)
+          </h4>
           <div class="field">
             <label>Bot Token:</label>
-            <input type="password" id="inp-tg-token" class="full-width" style="padding:8px;" placeholder="Bot Token từ @BotFather..." />
+            <input type="password" id="inp-tg-token" class="full-width" style="padding:8px;"
+              placeholder="Bot Token từ @BotFather..." />
           </div>
           <div class="field" style="margin-top:8px;">
             <label>Chat ID:</label>
             <div style="display:flex; gap:8px;">
-              <input type="text" id="inp-tg-chatid" class="full-width" style="padding:8px;" placeholder="ID từ @userinfobot..." />
-              <button id="btn-test-tg" class="btn" style="background:var(--bg-hover); color:var(--text-primary); border:1px solid var(--border); padding:8px; white-space:nowrap;">Test 🔔</button>
+              <input type="text" id="inp-tg-chatid" class="full-width" style="padding:8px;"
+                placeholder="ID từ @userinfobot..." />
+              <button id="btn-test-tg" class="btn"
+                style="background:var(--bg-hover); color:var(--text-primary); border:1px solid var(--border); padding:8px; white-space:nowrap;">Test
+                🔔</button>
             </div>
           </div>
           <div style="margin-top:12px; display:flex; align-items:center; gap:8px;">
             <input type="checkbox" id="chk-tg-enabled" style="cursor:pointer;" />
-            <label for="chk-tg-enabled" style="cursor:pointer; font-weight:normal;">Bật thông báo đa nền tảng (Telegram)</label>
+            <label for="chk-tg-enabled" style="cursor:pointer; font-weight:normal;">Bật thông báo đa nền tảng
+              (Telegram)</label>
           </div>
         </div>
-        
+
         <div style="margin-top:20px; display:flex; gap:8px; justify-content:flex-end;">
-          <button id="btn-save-settings" class="btn" style="background:var(--accent-blue); color:white; padding:8px 16px; font-weight:bold;">Lưu Cấu Hình</button>
+          <button id="btn-save-settings" class="btn"
+            style="background:var(--accent-blue); color:white; padding:8px 16px; font-weight:bold;">Lưu Cấu
+            Hình</button>
         </div>
       </div>
     </div>
   </div>
 
   <!-- Floating Chat Button -->
-  <button id="btn-floating-chat" class="btn-floating-chat" title="Mở Trợ Lý AI" style="display:flex;align-items:center;justify-content:center;position:fixed;bottom:20px;right:20px;width:50px;height:50px;border-radius:25px;background:linear-gradient(135deg, #1A73E8, #8E24AA);color:white;font-size:24px;border:none;box-shadow:0 4px 15px rgba(0,0,0,0.5);cursor:pointer;z-index:900;transition:transform 0.2s;">
+  <button id="btn-floating-chat" class="btn-floating-chat" title="Mở Trợ Lý AI"
+    style="display:flex;align-items:center;justify-content:center;position:fixed;bottom:20px;right:20px;width:50px;height:50px;border-radius:25px;background:linear-gradient(135deg, #1A73E8, #8E24AA);color:white;font-size:24px;border:none;box-shadow:0 4px 15px rgba(0,0,0,0.5);cursor:pointer;z-index:900;transition:transform 0.2s;">
     🤖
   </button>
 
   <!-- Slide-over Chat Panel -->
-  <div id="panel-chat" class="panel-chat" style="display:none;position:fixed;bottom:0;left:0;right:0;height:85vh;background:var(--bg-card);border-top:1px solid var(--border);border-radius:16px 16px 0 0;box-shadow:0 -5px 20px rgba(0,0,0,0.8);z-index:950;flex-direction:column;transform:translateY(100%);transition:transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);">
+  <div id="panel-chat" class="panel-chat"
+    style="display:none;position:fixed;bottom:0;left:0;right:0;height:85vh;background:var(--bg-card);border-top:1px solid var(--border);border-radius:16px 16px 0 0;box-shadow:0 -5px 20px rgba(0,0,0,0.8);z-index:950;flex-direction:column;transform:translateY(100%);transition:transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);">
     <!-- Chat Header -->
-    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--bg-secondary);border-radius:16px 16px 0 0;flex-shrink:0;">
+    <div
+      style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--bg-secondary);border-radius:16px 16px 0 0;flex-shrink:0;">
       <div style="display:flex;align-items:center;gap:6px;">
         <span style="font-size:18px;">🤖</span>
         <h3 style="margin:0;font-size:14px;color:var(--text-primary);">Trading Assistant</h3>
       </div>
       <div style="display:flex;gap:8px;align-items:center;">
-        <button id="btn-chat-clear" class="btn" style="background:transparent;border:1px solid var(--border);color:var(--text-muted);font-size:11px;padding:4px 8px;">🗑️ Clear</button>
-        <button id="btn-chat-close" style="background:transparent;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;line-height:1;margin-top:-2px;">&times;</button>
+        <button id="btn-chat-clear" class="btn"
+          style="background:transparent;border:1px solid var(--border);color:var(--text-muted);font-size:11px;padding:4px 8px;">🗑️
+          Clear</button>
+        <button id="btn-chat-close"
+          style="background:transparent;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;line-height:1;margin-top:-2px;">&times;</button>
       </div>
     </div>
-    
+
     <!-- Chat Messages -->
-    <div id="chat-messages" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;font-size:13px;line-height:1.5;">
+    <div id="chat-messages"
+      style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;font-size:13px;line-height:1.5;">
       <div class="chat-msg ai-msg">
-        Xin chào! Tôi là Trợ Lý AI. Tôi đã sẵn sàng để giúp bạn lọc tín hiệu, tính DCA hoặc quản trị rủi ro danh mục hôm nay.
+        Xin chào! Tôi là Trợ Lý AI. Tôi đã sẵn sàng để giúp bạn lọc tín hiệu, tính DCA hoặc quản trị rủi ro danh mục hôm
+        nay.
       </div>
     </div>
-    
+
     <!-- Chat Input Form -->
-    <form id="chat-form" style="padding:12px 16px;border-top:1px solid var(--border);background:var(--bg-secondary);margin:0;flex-shrink:0;">
+    <form id="chat-form"
+      style="padding:12px 16px;border-top:1px solid var(--border);background:var(--bg-secondary);margin:0;flex-shrink:0;">
       <div style="display:flex;gap:8px;align-items:flex-end;">
-        <textarea id="inp-chat" placeholder="Hỏi AI bất kỳ điều gì..." style="flex:1;height:40px;min-height:40px;max-height:100px;resize:none;padding:10px 12px;font-size:13px;border-radius:20px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);outline:none;font-family:inherit;line-height:1.4;transition:border-color 0.15s;"></textarea>
-        <button type="submit" id="btn-chat-send" class="btn" style="background:var(--accent-blue);color:white;border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;transition:opacity 0.2s;" disabled>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+        <textarea id="inp-chat" placeholder="Hỏi AI bất kỳ điều gì..."
+          style="flex:1;height:40px;min-height:40px;max-height:100px;resize:none;padding:10px 12px;font-size:13px;border-radius:20px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);outline:none;font-family:inherit;line-height:1.4;transition:border-color 0.15s;"></textarea>
+        <button type="submit" id="btn-chat-send" class="btn"
+          style="background:var(--accent-blue);color:white;border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;transition:opacity 0.2s;"
+          disabled>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
         </button>
       </div>
     </form>
@@ -312,4 +399,5 @@
 
   <script type="module" src="popup.js"></script>
 </body>
+
 </html>
