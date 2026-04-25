@@ -1,0 +1,40 @@
+# ── OS ──────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor / IDE ─────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ── Node (nếu dùng build tools) ──────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# ── Build output ─────────────────────────────────
+dist/
+build/
+*.zip
+
+# ── Sensitive / Local config ─────────────────────
+.env
+.env.local
+.env.*.local
+secrets.json
+
+# ── AI / Brain context (local only) ──────────────
+.brain/
+.gemini/
+
+# ── Logs ─────────────────────────────────────────
+logs/
+*.log
