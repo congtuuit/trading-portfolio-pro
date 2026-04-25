@@ -133,23 +133,23 @@ export async function initApp(root) {
   async function handleTakeProfit(closeId, closeQty, closePrice, targetId) {
     const index = portfolio.findIndex((t) => t.id === closeId);
     if (index < 0) return;
-    
+
     const trade = portfolio[index];
     const isBuy = trade.type === "BUY";
     const divisor = getDivisor(trade.symbol);
-    
+
     const exitFullPrice = closePrice * divisor;
     const entryFullPrice = parseFloat(trade.entryPrice);
-    
+
     let pnl = 0;
     if (isBuy) {
       pnl = (exitFullPrice - entryFullPrice) * closeQty;
     } else {
       pnl = (entryFullPrice - exitFullPrice) * closeQty;
     }
-    
+
     const historyRecord = {
-      id: "hist_" + Date.now().toString() + Math.random().toString().slice(2,5),
+      id: "hist_" + Date.now().toString() + Math.random().toString().slice(2, 5),
       date: Date.now(),
       symbol: trade.symbol,
       type: trade.type,
@@ -160,7 +160,7 @@ export async function initApp(root) {
     };
     tradeHistory.push(historyRecord);
     await saveTradeHistory(tradeHistory);
-    
+
     if (targetId) {
       const target = portfolio.find((t) => t.id === targetId);
       if (target) {
@@ -182,7 +182,7 @@ export async function initApp(root) {
     }
 
     await savePortfolio(portfolio);
-    
+
     renderPortfolio(portfolio, handleDelete, handleEdit, currentPriceMap, root);
     updatePricesAndRender();
     renderHistory(tradeHistory, root);
@@ -297,7 +297,7 @@ export async function initApp(root) {
 
   renderChatHistory(chatHistory, root);
   renderHistory(tradeHistory, root);
-  
+
   bindFormEvents(handleSave, root);
   bindCloseEvents(handleTakeProfit, root);
   bindHistoryEvents(handleClearHistory, root);
@@ -336,12 +336,48 @@ export async function initApp(root) {
   }, root);
 
   bindAIDCA((trade, currentPrice) => {
-    const data = currentPriceMap[trade.symbol] || {};
-    const pnlPct = trade.type === "BUY" ? ((currentPrice - trade.entryPrice) / trade.entryPrice) * 100 : ((trade.entryPrice - currentPrice) / trade.entryPrice) * 100;
-    const prompt = `Tôi đang gồng lỗ mã ${trade.symbol} (${trade.type}). Mức âm hiện hành: ${pnlPct.toFixed(2)}%.\nGiá hiện hành: ${currentPrice}.\nThông số kỹ thuật: RSI=${data.rsi ? Math.round(data.rsi) : "N/A"}, Trend EMA200=${data.ema200 || "N/A"}, BB Lower=${data.bb_lower || "N/A"}.\nCó thể DCA bắt đáy tại đây không? Phân tích 3 câu.`;
+    const d = currentPriceMap[trade.symbol] || {};
+
+    const pnlPct = trade.type === "BUY"
+      ? ((currentPrice - trade.entryPrice) / trade.entryPrice) * 100
+      : ((trade.entryPrice - currentPrice) / trade.entryPrice) * 100;
+
+    const prompt = `
+Tôi đang giữ lệnh ${trade.symbol} (${trade.type}).
+
+Thông tin hiện tại:
+- Entry: ${trade.entryPrice}
+- Giá hiện tại: ${currentPrice}
+- PnL: ${pnlPct.toFixed(2)}%
+
+Chỉ báo kỹ thuật:
+- RSI: ${d.rsi || "N/A"}
+- EMA20: ${d.ema20 || "N/A"}
+- EMA50: ${d.ema50 || "N/A"}
+- EMA200: ${d.ema200 || "N/A"}
+- MACD: ${d.macd || "N/A"} | Signal: ${d.macd_signal || "N/A"}
+- Bollinger: Lower=${d.bb_lower || "N/A"} | Upper=${d.bb_upper || "N/A"}
+- ATR: ${d.atr || "N/A"}
+- High/Low gần nhất: ${d.high || "N/A"} / ${d.low || "N/A"}
+- Volume: ${d.vol || "N/A"} (so với trung bình: ${d.vol_avg || "N/A"}x)
+
+Yêu cầu:
+1. Đánh giá xu hướng hiện tại (tăng / giảm / sideway).
+2. Quyết định rõ: BÁN / GIỮ / MUA THÊM.
+3. Nếu MUA THÊM (DCA):
+   - Đề xuất tối đa 2 vùng giá (dựa trên BB + ATR + EMA)
+   - Phân bổ vốn (% mỗi lệnh)
+4. Nếu BÁN:
+   - Nêu rõ nên cắt lỗ ngay hay chờ hồi (dựa trên tín hiệu kỹ thuật)
+5. Kế hoạch 3–5 phiên tới (kịch bản chính + kịch bản xấu)
+
+Trả lời tối đa 5 câu, ngắn gọn, tập trung vào hành động, không giải thích dài dòng.
+`;
+
     sendToChat(prompt);
+
     const dcaModal = root.querySelector("#modal-dca");
-    if(dcaModal) dcaModal.style.display = "none";
+    if (dcaModal) dcaModal.style.display = "none";
   }, root);
 
   bindChatEvents(

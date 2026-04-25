@@ -989,7 +989,7 @@ export function bindFormEvents(onSave, root = document) {
 
   if (btnToggle) {
     btnToggle.addEventListener("click", () => {
-      resetFormUI(); // ensures clean state
+      resetFormUI(root); // ensures clean state
       formSection.style.display = "block";
       btnToggle.style.display = "none";
       if (btnCancel) btnCancel.style.display = "block";
@@ -999,8 +999,8 @@ export function bindFormEvents(onSave, root = document) {
 
   if (btnCancel) {
     btnCancel.addEventListener("click", () => {
-      resetFormUI();
-      clearErrors();
+      resetFormUI(root);
+      clearErrors(root);
     });
   }
 
@@ -1059,7 +1059,7 @@ export function bindFormEvents(onSave, root = document) {
         note,
       });
 
-      resetFormUI();
+      resetFormUI(root);
       symIn.focus();
     } catch (err) {
       showError("err-symbol", err.message);
@@ -1091,7 +1091,7 @@ export function populateForm(trade, root = document) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function resetFormUI() {
+function resetFormUI(root = document) {
   currentEditId = null;
   root.querySelector("#trade-form").reset();
   root.querySelector("#form-title").textContent = "➕ New Position";

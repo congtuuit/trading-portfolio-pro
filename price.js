@@ -45,18 +45,22 @@ export async function fetchPricesMap(symbols) {
             query: { types: [] },
           },
           columns: [
-          "close", 
-          "change", 
-          "change_abs", 
-          "RSI", 
-          "EMA200", 
-          "BB.lower", 
-          "BB.upper", 
-          "ATR", 
+          "close",
+          "change",
+          "change_abs",
+          "RSI",
+          "EMA20",
+          "EMA50",
+          "EMA200",
+          "BB.lower",
+          "BB.upper",
+          "ATR",
           "high",
           "low",
-          "volume", 
-          "average_volume_10d_calc"
+          "volume",
+          "average_volume_10d_calc",
+          "MACD.macd",
+          "MACD.signal"
         ],
       }),
     });
@@ -72,12 +76,14 @@ export async function fetchPricesMap(symbols) {
     if (json.data && Array.isArray(json.data)) {
       json.data.forEach((item) => {
         const sym = item.s;
-        const [close, change, change_abs, rsi, ema200, bb_lower, bb_upper, atr, high, low, vol, vol_avg] = item.d;
+        const [close, change, change_abs, rsi, ema20, ema50, ema200, bb_lower, bb_upper, atr, high, low, vol, vol_avg, macd, macd_signal] = item.d;
         result[sym] = {
           close: close || 0,
           change: change || 0,
           change_abs: change_abs || 0,
           rsi: rsi || 0,
+          ema20: ema20 || 0,
+          ema50: ema50 || 0,
           ema200: ema200 || 0,
           bb_lower: bb_lower || 0,
           bb_upper: bb_upper || 0,
@@ -85,7 +91,9 @@ export async function fetchPricesMap(symbols) {
           high: high || 0,
           low: low || 0,
           vol: vol || 0,
-          vol_avg: vol_avg || 0
+          vol_avg: vol_avg || 0,
+          macd: macd || 0,
+          macd_signal: macd_signal || 0
         };
       });
     }
