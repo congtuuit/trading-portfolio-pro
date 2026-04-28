@@ -187,6 +187,173 @@ export function closeChatPanel(root = document) {
   root.querySelector("#panel-chat").classList.remove("open");
 }
 
+/* ── PHASE 04: AI ADVISOR UI LOGIC ── */
+
+export function bindTabEvents(root = document) {
+  const tabs = root.querySelectorAll(".tab-btn");
+  tabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      const target = tab.dataset.target;
+      
+      // Update Tab buttons
+      tabs.forEach(t => t.classList.remove("active"));
+      tab.classList.add("active");
+      
+      // Update Tab content
+      root.querySelectorAll(".tab-content").forEach(content => {
+        content.classList.remove("active");
+      });
+      root.querySelector(`#${target}`).classList.add("active");
+    });
+  });
+}
+
+export function bindScannerEvents(onScan, onAIAnalyze, onAskAdvisor, onViewRaw, root = document) {
+  const btnScan = root.querySelector("#btn-scan-market");
+  const inpTarget = root.querySelector("#inp-target-profit");
+  
+  if (btnScan) {
+    btnScan.addEventListener("click", async () => {
+      btnScan.disabled = true;
+      try {
+        await onScan();
+      } finally {
+        btnScan.disabled = false;
+      }
+    });
+  }
+
+  const btnAI = root.querySelector("#btn-ai-analyze");
+  if (btnAI) {
+    btnAI.addEventListener("click", async () => {
+      const targetProfit = parseFloat(inpTarget.value) || 3;
+      btnAI.disabled = true;
+      const originalText = btnAI.textContent;
+      btnAI.textContent = "⏳ Đang lọc AI...";
+      try {
+        await onAIAnalyze(targetProfit);
+      } finally {
+        btnAI.disabled = false;
+        btnAI.textContent = originalText;
+      }
+    });
+  }
+
+  // Event delegation cho toàn bộ vùng Advisor content
+  const advisorContent = root.querySelector("#advisor-content");
+  if (advisorContent) {
+    advisorContent.addEventListener("click", (e) => {
+      const card = e.target.closest(".scanner-card");
+      if (!card) return;
+
+      const symbol = card.dataset.symbol;
+
+      // Nếu bấm vào nút Raw
+      if (e.target.closest(".btn-view-raw")) {
+        e.stopPropagation();
+        const rawData = JSON.parse(card.dataset.raw || "{}");
+        onViewRaw(symbol, rawData);
+        return;
+      }
+
+      // Mặc định là xem tư vấn AI
+      onAskAdvisor(symbol);
+    });
+  }
+}
+
+export function renderScannerResults(results, root = document, timestamp = null, containerId = "#scanner-raw-results") {
+  const container = root.querySelector(containerId);
+  if (!container) return;
+
+  if (!results || results.length === 0) {
+    container.innerHTML = `<div class="empty-state">Không tìm thấy mã nào phù hợp.</div>`;
+    return;
+  }
+
+  let html = "";
+  if (timestamp) {
+    const date = new Date(timestamp);
+    const timeStr = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')} ${date.getDate()}/${date.getMonth() + 1}`;
+    html += `<div style="font-size:10px; color:var(--text-muted); margin-bottom:8px; text-align:right; padding-right:4px;">🕒 Cập nhật lần cuối: ${timeStr}</div>`;
+  }
+
+  html += results.map(res => `
+    <div class="scanner-card" data-symbol="${res.ticker}" data-raw='${JSON.stringify(res).replace(/'/g, "&apos;")}'>
+      <div class="scanner-main">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span class="scanner-ticker">${res.symbol}</span>
+          <a href="https://vn.tradingview.com/chart/?symbol=${res.ticker}" target="_blank" title="Xem biểu đồ TradingView" style="text-decoration:none; font-size:12px; line-height:1; cursor:pointer;">📈</a>
+          <span class="scanner-name">${res.description || res.name}</span>
+        </div>
+        <div class="scanner-price-info">
+          <div class="scanner-price">${fmt(res.price)}</div>
+          <div class="scanner-change ${res.changePercent >= 0 ? 'profit' : 'loss'}">
+            ${fmtSigned(res.changePercent)}%
+          </div>
+        </div>
+      </div>
+      <div class="ai-reason">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span>🤖 <strong>AI:</strong></span>
+          ${res.aiScore ? `<span style="background:${res.aiScore >= 8 ? 'var(--profit)' : 'var(--warning, #f1c40f)'}; color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:bold;">An toàn: ${res.aiScore}/10</span>` : ''}
+        </div>
+        <div style="font-size:11px; margin-bottom:8px; line-height:1.4; color:var(--text-primary); opacity:0.9;">
+          ${res.aiReason}
+        </div>
+        
+        <!-- Bảng kế hoạch rút gọn -->
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; background:rgba(255,255,255,0.05); padding:8px; border-radius:6px; border:1px dashed rgba(255,255,255,0.1);">
+          <div style="font-size:10px;">🎯 Target: <strong style="color:var(--profit);">${res.aiTarget || 'N/A'}</strong></div>
+          <div style="font-size:10px;">📥 Entry: <strong style="color:var(--text-primary);">${res.aiEntry || 'N/A'}</strong></div>
+          <div style="font-size:10px;">⏳ Giữ: <strong style="color:var(--warning, #f1c40f);">${res.aiDuration || 0} phiên</strong></div>
+          <div style="font-size:10px;">🔥 Winrate: <strong style="color:#00e676;">${res.aiWinRate || 0}%</strong></div>
+        </div>
+      </div>
+      <div class="scanner-stats">
+        <div style="display:flex; gap:12px;">
+          <span>RSI: <span class="stat-val">${Math.round(res.rsi)}</span></span>
+          <span>Vol: <span class="stat-val">${(res.volume / 1000000).toFixed(1)}M</span></span>
+        </div>
+        <button class="btn-view-raw" style="background:var(--bg-input); border:1px solid var(--border); color:var(--text-muted); font-size:10px; padding:2px 6px; border-radius:4px;">Raw 📄</button>
+      </div>
+    </div>
+  `).join("");
+
+  container.innerHTML = html;
+}
+
+export function renderSystemLogs(logs, root = document) {
+  const container = root.querySelector("#log-list");
+  if (!container) return;
+
+  if (!logs || logs.length === 0) {
+    container.innerHTML = `<div class="empty-state">Chưa có hoạt động nào được ghi lại.</div>`;
+    return;
+  }
+
+  container.innerHTML = logs.map(log => {
+    const time = new Date(log.time).toLocaleTimeString();
+    let typeColor = "var(--text-muted)";
+    if (log.type === 'ERROR') typeColor = "var(--loss)";
+    if (log.type === 'AI_RES') typeColor = "var(--profit)";
+    if (log.type === 'AI_PROMPT') typeColor = "var(--accent-blue)";
+
+    return `
+      <div class="log-item" style="background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:10px; font-size:11px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+          <span style="color:${typeColor}; font-weight:bold;">[${log.type}] ${log.title}</span>
+          <span style="color:var(--text-muted);">${time}</span>
+        </div>
+        <details>
+          <summary style="cursor:pointer; color:var(--accent-blue);">Xem chi tiết</summary>
+          <div class="log-detail" style="margin-top:8px; padding:8px; background:rgba(0,0,0,0.2); border-radius:4px; font-size:11px; white-space:pre-wrap; word-break:break-all; max-height:400px; overflow-y:auto;">${log.detail}</div>
+        </details>
+      </div>
+    `;
+  }).join("");
+}
+
 export function appendChatMessage(role, text, isHtml = false, root = document) {
   const container = root.querySelector("#chat-messages");
   const div = document.createElement("div");
@@ -314,6 +481,10 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
       root.querySelector("#inp-ai-model").value = settings.aiModel || "";
       root.querySelector("#inp-api-key").value = settings.apiKey || "";
       
+      // Load AI Advisor profile
+      root.querySelector("#inp-trading-style").value = settings.tradingStyle || "lướt sóng";
+      root.querySelector("#inp-risk-level").value = settings.riskLevel || "trung bình";
+      
       // Load Telegram settings
       root.querySelector("#inp-tg-token").value = settings.tgToken || "";
       root.querySelector("#inp-tg-chatid").value = settings.tgChatId || "";
@@ -406,6 +577,10 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
       settings.aiProvider = provider;
       settings.aiModel = model;
       settings.apiKey = key;
+
+      // Save AI Advisor profile
+      settings.tradingStyle = root.querySelector("#inp-trading-style").value;
+      settings.riskLevel = root.querySelector("#inp-risk-level").value;
 
       // Save Telegram settings
       settings.tgToken = root.querySelector("#inp-tg-token").value.trim();

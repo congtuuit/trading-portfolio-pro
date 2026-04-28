@@ -3,11 +3,16 @@
  * Handles periodic portfolio monitoring and Telegram notifications.
  */
 
-import { getPortfolio, getSettings } from "./storage.js";
+import { 
+  getPortfolio, 
+  getSettings, 
+  addSystemLog 
+} from "./storage.js";
 import { fetchPricesMap } from "./price.js";
 import { getDivisor } from "./utils.js";
 import { sendTelegramMessage } from "./telegram.js";
 import { suggestEntryExit } from "./analysis.js";
+import { scanVietnamStocks } from "./scanner_data.js";
 
 const MONITOR_ALARM = "tpp_monitor_alarm";
 const MONITOR_INTERVAL_MINS = 10;
@@ -98,10 +103,47 @@ async function notifyTelegram(settings, message) {
 
 // ── Message Listener for Price Fetching (CORS Proxy) ──
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "FETCH_PRICES") {
-    fetchPricesMap(message.symbols)
-      .then(data => sendResponse({ success: true, data }))
-      .catch(err => sendResponse({ success: false, error: err.message }));
-    return true; // Keep channel open for async response
+  console.log("[TPP] Message received:", message.type);
+
+  switch (message.type) {
+    case "FETCH_PRICES":
+      addSystemLog('API', 'FETCH_PRICES Request', message.symbols);
+      fetchPricesMap(message.symbols)
+        .then(data => {
+          addSystemLog('API', 'FETCH_PRICES Response', data);
+          sendResponse({ success: true, data });
+        })
+        .catch(err => {
+          addSystemLog('ERROR', 'FETCH_PRICES Failed', err.message);
+          sendResponse({ success: false, error: err.message });
+        });
+      return true;
+
+    case "SCAN_STOCKS":
+      console.log("[TPP] Starting scanVietnamStocks...");
+      addSystemLog('API', 'SCAN_STOCKS Request', 'Scanning Vietnam market...');
+      try {
+        scanVietnamStocks()
+          .then(data => {
+            console.log("[TPP] Scan success, count:", data ? data.length : 0);
+            addSystemLog('API', 'SCAN_STOCKS Response', data);
+            sendResponse({ success: true, data: data || [] });
+          })
+          .catch(err => {
+            console.error("[TPP] Scan error (Promise):", err);
+            addSystemLog('ERROR', 'SCAN_STOCKS Failed (Promise)', err.message);
+            sendResponse({ success: false, error: err.message });
+          });
+      } catch (err) {
+        console.error("[TPP] Scan error (Sync):", err);
+        addSystemLog('ERROR', 'SCAN_STOCKS Failed (Sync)', err.message);
+        sendResponse({ success: false, error: err.message });
+      }
+      return true;
+
+    default:
+      // Phản hồi mặc định cho các message lạ để tránh treo Port
+      sendResponse({ success: false, error: "Unknown message type" });
+      return false;
   }
 });

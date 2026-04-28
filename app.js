@@ -11,7 +11,17 @@ import {
   getChatHistory,
   saveChatHistory,
   getTradeHistory,
-  saveTradeHistory
+  saveTradeHistory,
+  getScannerResults,
+  saveScannerResults,
+  getRawScannerResults,
+  saveRawScannerResults,
+  clearAllScannerData,
+  getAdviceCache,
+  saveAdviceCache,
+  clearAdviceCache,
+  getSystemLogs,
+  addSystemLog
 } from "./storage.js";
 import { getDivisor, escapeHTML } from "./utils.js";
 import {
@@ -31,10 +41,15 @@ import {
   removeTypingIndicator,
   updateSummaryBar,
   renderChatHistory,
-  renderHistory
+  renderHistory,
+  bindTabEvents,
+  bindScannerEvents,
+  renderScannerResults,
+  renderSystemLogs
 } from "./ui.js";
 import { fetchPricesMap } from "./price.js";
-import { queryAI, fetchModels } from "./ai.js";
+import { queryAI, fetchModels, screenPotentialStocks, getDetailedAdvice } from "./ai.js";
+import { prepareDataForAI } from "./scanner_data.js";
 
 const REFRESH_INTERVAL_MS = 30 * 1000;
 
@@ -222,6 +237,158 @@ export async function initApp(root) {
     }
   }
 
+  let lastScannedData = [];
+
+  async function handleScanMarket() {
+    const scannerContainer = root.querySelector("#scanner-raw-results");
+    const btnAI = root.querySelector("#btn-ai-analyze");
+    const aiSection = root.querySelector("#ai-top-picks");
+    
+    scannerContainer.innerHTML = `<div class="empty-state">⏳ Đang quét dữ liệu thị trường (50 mã)...</div>`;
+    btnAI.style.display = "none";
+    aiSection.style.display = "none"; // Ẩn kết quả AI cũ khi quét mới
+
+    chrome.runtime.sendMessage({ type: "SCAN_STOCKS" }, (res) => {
+      if (chrome.runtime.lastError) {
+        scannerContainer.innerHTML = `<div class="empty-state">❌ Lỗi kết nối Background.</div>`;
+        return;
+      }
+
+      if (res && res.success) {
+        lastScannedData = res.data;
+        saveRawScannerResults(res.data); // Lưu dữ liệu quét gốc
+        renderScannerResults(res.data, root, Date.now(), "#scanner-raw-results");
+        if (res.data.length > 0) {
+          btnAI.style.display = "block";
+        }
+      } else {
+        scannerContainer.innerHTML = `<div class="empty-state">❌ Lỗi: ${res ? res.error : "Unknown"}</div>`;
+      }
+    });
+  }
+
+  async function handleAIAnalyze(targetProfit) {
+    if (!lastScannedData || lastScannedData.length === 0) {
+      alert("Hãy quét dữ liệu trước khi phân tích AI.");
+      return;
+    }
+
+    const aiContainer = root.querySelector("#scanner-ai-results");
+    const aiSection = root.querySelector("#ai-top-picks");
+    
+    aiSection.style.display = "block";
+    aiContainer.innerHTML = `<div class="empty-state">🤖 AI đang phân tích dữ liệu (Mục tiêu ${targetProfit}%)...</div>`;
+    
+    try {
+      const cleanedData = prepareDataForAI(lastScannedData);
+      const aiScreenerResults = await screenPotentialStocks(cleanedData, targetProfit, appSettings);
+      
+      console.log("[TPP] AI Raw Results Count:", aiScreenerResults.length);
+      addSystemLog('DEBUG', 'Dữ liệu thô từ AI', aiScreenerResults);
+
+      const finalResults = aiScreenerResults.map(ai => {
+        if (!ai.s) return null;
+        const aiSymbol = ai.s.toUpperCase();
+        
+        // Tìm mã khớp (linh hoạt: khớp symbol, khớp ticker, hoặc ticker chứa symbol)
+        const raw = lastScannedData.find(r => {
+          const rSym = (r.symbol || "").toUpperCase();
+          const rTick = (r.ticker || "").toUpperCase();
+          return rSym === aiSymbol || rTick === aiSymbol || rTick.includes(aiSymbol) || aiSymbol.includes(rSym);
+        });
+        
+        if (!raw) {
+          console.warn(`[TPP] Không tìm thấy dữ liệu gốc cho mã AI: ${ai.s}`);
+          return null;
+        }
+        return { 
+          ...raw, 
+          aiReason: ai.r, 
+          aiScore: ai.sc || 0,
+          aiDuration: ai.d || 0,
+          aiEntry: ai.e || "N/A",
+          aiTarget: ai.t || "N/A",
+          aiWinRate: ai.w || 0
+        };
+      }).filter(r => r !== null);
+
+      console.log("[TPP] Final matched results count:", finalResults.length);
+      addSystemLog('DEBUG', 'Kết quả sau khi khớp', { totalAI: aiScreenerResults.length, matched: finalResults.length });
+
+      // Sắp xếp theo điểm số an toàn giảm dần
+      finalResults.sort((a, b) => b.aiScore - a.aiScore);
+
+      // Sắp xếp theo điểm số an toàn giảm dần
+      finalResults.sort((a, b) => b.aiScore - a.aiScore);
+
+      // Lưu kết quả vào storage
+      const timestamp = Date.now();
+      await saveScannerResults(finalResults, timestamp);
+
+      renderScannerResults(finalResults, root, timestamp, "#scanner-ai-results");
+    } catch (err) {
+      aiContainer.innerHTML = `<div class="empty-state">❌ Lỗi phân tích AI: ${err.message}</div>`;
+    }
+  }
+
+  async function handleAskAdvisor(symbol) {
+    // 1. Kiểm tra Cache trước
+    const cachedAdvice = await getAdviceCache(symbol);
+    if (cachedAdvice) {
+      console.log("[TPP] Using cached advice for", symbol);
+      showAdviceModal(symbol, cachedAdvice);
+      return;
+    }
+
+    // 2. Nếu không có cache, lấy dữ liệu và gọi AI
+    const dataMap = await fetchPricesMap([symbol]);
+    const fullData = dataMap[symbol];
+
+    if (!fullData) {
+      alert("Không tìm thấy dữ liệu cho mã " + symbol);
+      return;
+    }
+
+    showAdviceModal(symbol, `<div class="empty-state">⏳ Đang đối chiếu với hồ sơ nhà đầu tư của bạn...</div>`);
+
+    try {
+      const advice = await getDetailedAdvice(symbol, fullData, appSettings);
+      
+      // Lưu vào Cache
+      await saveAdviceCache(symbol, advice);
+      
+      showAdviceModal(symbol, advice);
+    } catch (err) {
+      root.querySelector("#modal-body").innerHTML = `<div class="pnl loss">❌ Lỗi AI Advisor: ${err.message}</div>`;
+    }
+  }
+
+  function showAdviceModal(symbol, adviceContent) {
+    root.querySelector("#modal-title").innerHTML = `AI Advisor đang phân tích <strong>${symbol.split(':')[1] || symbol}</strong>...`;
+    
+    // Nếu là text bình thường thì format, nếu là HTML (như loading) thì giữ nguyên
+    if (adviceContent.includes("empty-state")) {
+      root.querySelector("#modal-body").innerHTML = adviceContent;
+    } else {
+      const escapedAdvice = escapeHTML(adviceContent);
+      const formattedAdvice = escapedAdvice.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>');
+      root.querySelector("#modal-body").innerHTML = `
+        <div style="font-size:13px; line-height:1.6; color:var(--text-primary);">
+          ${formattedAdvice}
+        </div>
+      `;
+    }
+    root.querySelector("#modal-analysis").style.display = "flex";
+  }
+
+  function handleViewRaw(symbol, rawData) {
+    root.querySelector("#modal-title").innerHTML = `Dữ liệu gốc (Raw): <strong>${symbol}</strong>`;
+    root.querySelector("#modal-body").innerHTML = `
+      <pre style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; font-size:11px; overflow:auto; max-height:350px;">${JSON.stringify(rawData, null, 2)}</pre>
+    `;
+    root.querySelector("#modal-analysis").style.display = "flex";
+  }
+
   function initExportImport() {
     const btnExport = root.querySelector("#btn-export");
     const btnImport = root.querySelector("#btn-import");
@@ -294,14 +461,89 @@ export async function initApp(root) {
   appSettings = await getSettings();
   chatHistory = await getChatHistory();
   tradeHistory = await getTradeHistory();
+  const scannerCache = await getScannerResults();
+  const rawCache = await getRawScannerResults();
 
   renderChatHistory(chatHistory, root);
   renderHistory(tradeHistory, root);
+
+  // Khôi phục dữ liệu Quét Gốc
+  if (rawCache.length > 0) {
+    lastScannedData = rawCache;
+    renderScannerResults(rawCache, root, null, "#scanner-raw-results");
+    root.querySelector("#btn-ai-analyze").style.display = "block";
+  }
+
+  // Khôi phục dữ liệu AI Top Picks
+  if (scannerCache.results.length > 0) {
+    root.querySelector("#ai-top-picks").style.display = "block";
+    renderScannerResults(scannerCache.results, root, scannerCache.timestamp, "#scanner-ai-results");
+  }
 
   bindFormEvents(handleSave, root);
   bindCloseEvents(handleTakeProfit, root);
   bindHistoryEvents(handleClearHistory, root);
   bindT0Events(handleT0, root);
+  bindTabEvents(root);
+  bindScannerEvents(handleScanMarket, handleAIAnalyze, handleAskAdvisor, handleViewRaw, root);
+
+  // Tab Nhật ký logic
+  const logTabBtn = root.querySelector('.tab-btn[data-target="section-logs"]');
+  if (logTabBtn) {
+    logTabBtn.addEventListener('click', async () => {
+      const logs = await getSystemLogs();
+      renderSystemLogs(logs, root);
+    });
+  }
+
+  // Nút Xóa Logs
+  const btnClearLogs = root.querySelector('#btn-clear-logs');
+  if (btnClearLogs) {
+    btnClearLogs.addEventListener('click', async () => {
+      if (confirm('Bạn có chắc muốn xóa toàn bộ nhật ký?')) {
+        await chrome.storage.local.remove('tpp_logs');
+        renderSystemLogs([], root);
+      }
+    });
+  }
+
+  // Nút Xóa dữ liệu Scanner (Cả 2)
+  const btnClearScanner = root.querySelector('#btn-clear-scanner');
+  if (btnClearScanner) {
+    btnClearScanner.addEventListener('click', async () => {
+      if (confirm('Xóa toàn bộ kết quả quét và phân tích AI hiện tại?')) {
+        await clearAllScannerData();
+        root.querySelector("#scanner-raw-results").innerHTML = `<div class="empty-state">Bấm "1. Quét Dữ Liệu" để lấy thông tin mới nhất.</div>`;
+        root.querySelector("#scanner-ai-results").innerHTML = "";
+        root.querySelector("#ai-top-picks").style.display = "none";
+        root.querySelector("#btn-ai-analyze").style.display = "none";
+        lastScannedData = [];
+      }
+    });
+  }
+
+  // Nút Xóa riêng danh sách AI
+  const btnClearAI = root.querySelector('#btn-clear-ai');
+  if (btnClearAI) {
+    btnClearAI.addEventListener('click', async () => {
+      if (confirm('Xóa danh sách gợi ý của AI?')) {
+        await chrome.storage.local.remove(["tpp_scanner_results", "tpp_scanner_time"]);
+        root.querySelector("#scanner-ai-results").innerHTML = "";
+        root.querySelector("#ai-top-picks").style.display = "none";
+      }
+    });
+  }
+
+  // Nút Xóa Cache AI
+  const btnClearCache = root.querySelector('#btn-clear-cache');
+  if (btnClearCache) {
+    btnClearCache.addEventListener('click', async () => {
+      if (confirm('Bạn có chắc muốn xóa bộ nhớ đệm lời khuyên AI? (Tiết kiệm Token nhưng sẽ phải quét lại mã)')) {
+        await clearAdviceCache();
+        alert('Đã xóa cache thành công!');
+      }
+    });
+  }
 
   bindSettingsEvents(
     appSettings,

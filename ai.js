@@ -2,6 +2,7 @@
  * ai.js
  * Handles AI API integrations (Gemini, OpenAI)
  */
+import { getAdviceCache, saveAdviceCache, addSystemLog } from "./storage.js";
 
 export async function queryAI(inputData, settings) {
   if (!settings.apiKey) {
@@ -17,18 +18,247 @@ export async function queryAI(inputData, settings) {
     messages = inputData;
   }
 
-  if (settings.aiProvider === "gemini") {
-    const model = settings.aiModel || "gemini-1.5-flash";
-    return await queryGemini(messages, model, settings.apiKey);
-  } else if (settings.aiProvider === "openai") {
-    const model = settings.aiModel || "gpt-4o-mini";
-    return await queryOpenAI(messages, model, settings.apiKey);
-  } else {
-    throw new Error("Nhà cung cấp AI không hợp lệ.");
+  const provider = settings.aiProvider || "gemini";
+  await addSystemLog('AI_PROMPT', `Gửi yêu cầu tới ${provider}`, messages);
+
+  try {
+    let result = "";
+    if (provider === "gemini") {
+      const model = settings.aiModel || "gemini-1.5-flash";
+      result = await queryGemini(messages, model, settings.apiKey, settings.systemPromptOverride);
+    } else if (provider === "openai") {
+      const model = settings.aiModel || "gpt-4o-mini";
+      result = await queryOpenAI(messages, model, settings.apiKey, settings.systemPromptOverride);
+    } else {
+      throw new Error("Nhà cung cấp AI không hợp lệ.");
+    }
+
+    await addSystemLog('AI_RES', `Phản hồi từ ${provider}`, result);
+    return result;
+  } catch (err) {
+    await addSystemLog('ERROR', `Lỗi AI (${provider})`, err.message);
+    throw err;
   }
 }
 
-async function queryGemini(messages, model, apiKey) {
+/**
+ * PHASE 02: SMART SCREENER (STABLE VERSION)
+ */
+export async function screenPotentialStocks(rawStocks, targetProfit, settings) {
+  try {
+    // 1. Giảm payload để tránh AI bị quá tải token
+    const compactData = rawStocks.map(s => ({
+      s: s.s,
+      p: s.p,
+      c: s.c,
+      v: s.v,
+      rsi: s.rsi,
+      atr: s.atr,
+      m: s.m
+    }));
+
+    const cleanedData = JSON.stringify(compactData);
+
+    const prompt = `Dữ liệu cổ phiếu (JSON):
+${cleanedData}
+
+Mục tiêu: Lướt sóng ~${targetProfit}%/phiên. Chọn 3-10 mã tốt nhất.
+
+Yêu cầu trả về danh sách theo định dạng chính xác từng dòng như sau:
+Mã: [Ticker] | Lý do: [Lý do ngắn] | Điểm: [0-10] | Phiên: [Số phiên] | Vào: [Giá vào] | Mục tiêu: [Giá mục tiêu] | Win: [0-100]
+
+CHỈ TRẢ VỀ DANH SÁCH CÁC DÒNG, KHÔNG GIẢI THÍCH GÌ THÊM.`;
+
+    const systemPrompt = "Bạn là chuyên gia trading ngắn hạn, giỏi phân tích dòng tiền và breakout. Bạn luôn trả về kết quả dưới dạng danh sách dòng văn bản, mỗi dòng một mã cổ phiếu.";
+
+    const response = await queryAIWithSystem(prompt, systemPrompt, settings);
+    
+    // 2. Phân tích văn bản thô (Mỗi dòng một mã)
+    const lines = response.split('\n').filter(l => l.includes('Mã:') && l.includes('|'));
+    
+    const results = lines.map(line => {
+      try {
+        const parts = {};
+        line.split('|').forEach(part => {
+          const [key, val] = part.split(':').map(s => s.trim());
+          if (key && val) parts[key.toLowerCase()] = val;
+        });
+
+        if (!parts['mã']) return null;
+
+        return {
+          s: parts['mã'],
+          r: parts['lý do'] || "",
+          sc: parseFloat(parts['điểm']) || 0,
+          d: parseInt(parts['phiên']) || 0,
+          e: parseFloat(parts['vào']) || 0,
+          t: parseFloat(parts['mục tiêu']) || 0,
+          w: parseFloat(parts['win']) || 0
+        };
+      } catch (e) {
+        return null;
+      }
+    }).filter(Boolean);
+
+    return results.slice(0, 10);
+
+  } catch (e) {
+    addSystemLog('ERROR', 'Screener failed', { error: e.message });
+    return [];
+  }
+}
+
+
+/**
+ * Parse JSON an toàn (3 lớp chống lỗi)
+ */
+function safeParseJSON(text) {
+  if (!text) return [];
+
+  // 1. Làm sạch Markdown và ký tự rác
+  let cleaned = text.trim();
+  if (cleaned.includes('```')) {
+    cleaned = cleaned.replace(/```json|```/g, '').trim();
+  }
+
+  // 2. Tìm mảng JSON [ ... ]
+  const startIdx = cleaned.indexOf('[');
+  const endIdx = cleaned.lastIndexOf(']');
+
+  let jsonPart = cleaned;
+  if (startIdx !== -1) {
+    if (endIdx > startIdx) {
+      jsonPart = cleaned.substring(startIdx, endIdx + 1);
+    } else {
+      jsonPart = cleaned.substring(startIdx);
+    }
+  }
+
+  // 3. Thử parse trực tiếp
+  try {
+    return JSON.parse(jsonPart);
+  } catch { }
+
+  // 4. Nếu fail, thử vá lỗi (bao gồm xử lý dấu phẩy thừa)
+  try {
+    const fixed = fixTruncatedJson(jsonPart);
+    return JSON.parse(fixed);
+  } catch (e) {
+    console.error("[TPP] Trầm trọng: Không thể vá JSON", e);
+  }
+
+  return [];
+}
+
+
+/**
+ * Chuẩn hóa output từ AI
+ */
+function normalizeStockOutput(item) {
+  try {
+    if (!item || !item.s) return null;
+
+    return {
+      s: String(item.s),
+      r: String(item.r || ""),
+      sc: Number(item.sc || 0),
+      d: Number(item.d || 0),
+      e: Number(item.e || 0),
+      t: Number(item.t || 0),
+      w: Number(item.w || 0)
+    };
+  } catch {
+    return null;
+  }
+}
+
+
+/**
+ * Vá JSON bị cắt cụt
+ */
+function fixTruncatedJson(str) {
+  let repaired = str.trim();
+
+  // 1. Xử lý dấu phẩy thừa ở cuối (trailing comma)
+  repaired = repaired.replace(/,\s*$/, '');
+
+  // 2. Fix dấu ngoặc kép nếu bị thiếu trong string
+  const lastQuote = repaired.lastIndexOf('"');
+  const lastColon = repaired.lastIndexOf(':');
+  if (lastQuote > lastColon) {
+    // Có vẻ đang dở dang trong một chuỗi văn bản
+    const quoteCount = (repaired.match(/"/g) || []).length;
+    if (quoteCount % 2 !== 0) repaired += '"';
+  }
+
+  // 3. Đếm và đóng ngoặc {} []
+  let openBraces = (repaired.match(/\{/g) || []).length;
+  let closeBraces = (repaired.match(/\}/g) || []).length;
+  let openBrackets = (repaired.match(/\[/g) || []).length;
+  let closeBrackets = (repaired.match(/\]/g) || []).length;
+
+  while (openBraces > closeBraces) {
+    repaired += '}';
+    closeBraces++;
+  }
+  while (openBrackets > closeBrackets) {
+    repaired += ']';
+    closeBrackets++;
+  }
+
+  return repaired;
+}
+
+/**
+ * PHASE 03: PROFESSIONAL AI ADVISOR
+ * Phân tích chi tiết một mã cụ thể theo yêu cầu của User.
+ */
+export async function getDetailedAdvice(symbol, fullData, settings) {
+  const profile = {
+    trading_style: settings.tradingStyle || "lướt sóng",
+    risk_level: settings.riskLevel || "trung bình"
+  };
+
+  const prompt = `Bạn là một AI advisor chuyên tư vấn giao dịch cổ phiếu Việt Nam.
+
+Hồ sơ nhà đầu tư:
+- Phong cách: ${profile.trading_style}
+- Khẩu vị rủi ro: ${profile.risk_level}
+
+Dữ liệu cổ phiếu:
+${JSON.stringify(fullData)}
+
+Nhiệm vụ:
+1. Đánh giá cổ phiếu có phù hợp với nhà đầu tư này không
+2. Nếu KHÔNG phù hợp → giải thích vì sao
+3. Nếu PHÙ HỢP → đưa kế hoạch giao dịch cụ thể
+
+Phân tích theo cấu trúc:
+[1] Tóm tắt & Điểm an toàn (Scale 1-10 cho đầu tư ngắn hạn)
+[2] Dự báo thời hạn (Vị thế còn an toàn trong bao nhiêu phiên tới?)
+[3] Đánh giá Win Rate (%)
+[4] Phù hợp với user? (Có/Không + Lý do)
+[5] Kế hoạch hành động chi tiết:
+    - Giá vào (Entry)
+    - Chốt lời (Target)
+    - Cắt lỗ (Stoploss)
+[6] Mức độ tự tin và rủi ro chính.
+
+Nguyên tắc: Không nói lý thuyết chung chung, gắn với dữ liệu, tránh FOMO.`;
+
+  return await queryAI(prompt, settings);
+}
+
+/**
+ * Helper để gọi AI với system instruction tùy chỉnh.
+ */
+async function queryAIWithSystem(userPrompt, systemPrompt, settings) {
+  // Ghi đè system instruction vào settings để queryAI xử lý
+  const customSettings = { ...settings, systemPromptOverride: systemPrompt };
+  return await queryAI([{ role: "user", text: userPrompt }], customSettings);
+}
+
+async function queryGemini(messages, model, apiKey, systemPrompt) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
   const contents = messages.map(m => ({
@@ -40,7 +270,7 @@ async function queryGemini(messages, model, apiKey) {
     contents: contents,
     system_instruction: {
       parts: [
-        { text: "Bạn là một trợ lý giao dịch tài chính chuyên nghiệp, am hiểu chiến thuật lướt T0 (Thay nước) và phân tích kỹ thuật (Fibonacci, S/R). Luôn trả lời súc tích, quyết đoán, đủ ý và có dữ liệu dẫn chứng." }
+        { text: systemPrompt || "Bạn là một trợ lý giao dịch tài chính chuyên nghiệp, am hiểu chiến thuật lướt T0 (Thay nước) và phân tích kỹ thuật (Fibonacci, S/R). Luôn trả lời súc tích, quyết đoán, đủ ý và có dữ liệu dẫn chứng." }
       ]
     },
     generationConfig: {
@@ -77,7 +307,7 @@ async function queryGemini(messages, model, apiKey) {
   throw new Error("Gemini không trả về kết quả hợp lệ.");
 }
 
-async function queryOpenAI(messagesArr, model, apiKey) {
+async function queryOpenAI(messagesArr, model, apiKey, systemPrompt) {
   const url = "https://api.openai.com/v1/chat/completions";
 
   const mappedMessages = messagesArr.map(m => ({
@@ -85,14 +315,12 @@ async function queryOpenAI(messagesArr, model, apiKey) {
     content: m.text
   }));
 
+  const sysMsg = systemPrompt || "Bạn là một trợ lý giao dịch tài chính chuyên nghiệp, am hiểu phân tích kỹ thuật và dòng tiền. Luôn trả lời súc tích, quyết đoán.";
+
   const payload = {
     model: model,
     messages: [
-      {
-        role: "system",
-        content:
-          "Bạn là một chuyên gia tư vấn đầu tư tài chính nhạy bén và kỷ luật. Luôn trả lời trọng tâm, format rõ ràng.",
-      },
+      { role: "system", content: sysMsg },
       ...mappedMessages
     ],
     temperature: 0.1,

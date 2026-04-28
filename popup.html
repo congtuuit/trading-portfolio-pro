@@ -35,93 +35,168 @@
       </div>
   </header>
 
-  <!-- ── Add Trade Form ── -->
-  <section class="form-section" id="form-section" style="display: none;">
-    <div class="form-title" id="form-title">➕ New Position</div>
-    <form id="trade-form" autocomplete="off" novalidate>
+  <!-- ── Tab Navigation ── -->
+  <nav class="tabs-nav">
+    <button class="tab-btn active" data-target="section-portfolio">💼 Danh Mục</button>
+    <button class="tab-btn" data-target="section-advisor">🧠 Advisor</button>
+    <button class="tab-btn" data-target="section-logs">📜 Nhật ký</button>
+  </nav>
 
-      <div class="form-grid">
+  <div id="section-portfolio" class="tab-content active">
 
-        <!-- Symbol -->
-        <div class="field full-width">
-          <label for="inp-symbol">Symbol *</label>
-          <div style="display:flex;gap:4px;">
-            <input id="inp-symbol" type="text" placeholder="HOSE:HCM" maxlength="20" />
-            <button type="button" id="btn-analyze" class="btn" style="background:#4c9ce2;color:#fff;">Khám
-              (Analyze)</button>
+    <!-- ── Add Trade Form ── -->
+    <section class="form-section" id="form-section" style="display: none;">
+      <div class="form-title" id="form-title">➕ New Position</div>
+      <form id="trade-form" autocomplete="off" novalidate>
+
+        <div class="form-grid">
+
+          <!-- Symbol -->
+          <div class="field full-width">
+            <label for="inp-symbol">Symbol *</label>
+            <div style="display:flex;gap:4px;">
+              <input id="inp-symbol" type="text" placeholder="HOSE:HCM" maxlength="20" />
+              <button type="button" id="btn-analyze" class="btn" style="background:#4c9ce2;color:#fff;">Khám
+                (Analyze)</button>
+            </div>
+            <span id="err-symbol" class="field-error"></span>
           </div>
-          <span id="err-symbol" class="field-error"></span>
-        </div>
 
-        <div id="analysis-card" class="field full-width"
-          style="display:none; padding:8px; border-radius:6px; font-size:11px; margin-bottom: 4px; border: 1px solid var(--border-focus); background: rgba(76, 156, 226, 0.1);">
-          <div id="analysis-card-content"></div>
-          <div style="margin-top:8px; display:flex; justify-content:flex-end;">
-            <button type="button" id="btn-ask-ai" class="btn"
-              style="background:linear-gradient(90deg, #1A73E8, #8E24AA); color:white; font-size:11px; padding:4px 8px;">Ask
-              AI 🤖</button>
+          <div id="analysis-card" class="field full-width"
+            style="display:none; padding:8px; border-radius:6px; font-size:11px; margin-bottom: 4px; border: 1px solid var(--border-focus); background: rgba(76, 156, 226, 0.1);">
+            <div id="analysis-card-content"></div>
+            <div style="margin-top:8px; display:flex; justify-content:flex-end;">
+              <button type="button" id="btn-ask-ai" class="btn"
+                style="background:linear-gradient(90deg, #1A73E8, #8E24AA); color:white; font-size:11px; padding:4px 8px;">Ask
+                AI 🤖</button>
+            </div>
           </div>
+
+          <!-- Type -->
+          <div class="field">
+            <label for="inp-type">Type</label>
+            <select id="inp-type">
+              <option value="BUY">BUY</option>
+              <option value="SELL">SELL</option>
+            </select>
+          </div>
+
+          <!-- Entry Price -->
+          <div class="field">
+            <label for="inp-entry">Entry Price *</label>
+            <input id="inp-entry" type="number" min="0" step="any" placeholder="0.00" />
+            <span id="err-entry" class="field-error"></span>
+          </div>
+
+          <!-- Quantity -->
+          <div class="field">
+            <label for="inp-qty">Quantity</label>
+            <input id="inp-qty" type="number" min="100" step="100" value="100" placeholder="100" />
+          </div>
+
+          <!-- Stop Loss -->
+          <div class="field">
+            <label for="inp-sl">Stop Loss</label>
+            <input id="inp-sl" type="number" min="0" step="any" placeholder="optional" />
+          </div>
+
+          <!-- Take Profit -->
+          <div class="field">
+            <label for="inp-tp">Take Profit</label>
+            <input id="inp-tp" type="number" min="0" step="any" placeholder="optional" />
+          </div>
+
+          <!-- Note -->
+          <div class="field full-width">
+            <label for="inp-note">Note</label>
+            <textarea id="inp-note" placeholder="Optional note..."></textarea>
+          </div>
+
+        </div><!-- /form-grid -->
+
+        <div style="display: flex; gap: 8px; margin-top: 10px;">
+          <button type="submit" id="btn-submit" class="btn-add" style="margin-top: 0; flex: 1;">Add Position</button>
+          <button type="button" id="btn-cancel" class="btn-add"
+            style="margin-top: 0; flex: 1; display: none; background: var(--bg-hover);">Cancel</button>
         </div>
+      </form>
+    </section>
 
-        <!-- Type -->
-        <div class="field">
-          <label for="inp-type">Type</label>
-          <select id="inp-type">
-            <option value="BUY">BUY</option>
-            <option value="SELL">SELL</option>
-          </select>
-        </div>
-
-        <!-- Entry Price -->
-        <div class="field">
-          <label for="inp-entry">Entry Price *</label>
-          <input id="inp-entry" type="number" min="0" step="any" placeholder="0.00" />
-          <span id="err-entry" class="field-error"></span>
-        </div>
-
-        <!-- Quantity -->
-        <div class="field">
-          <label for="inp-qty">Quantity</label>
-          <input id="inp-qty" type="number" min="100" step="100" value="100" placeholder="100" />
-        </div>
-
-        <!-- Stop Loss -->
-        <div class="field">
-          <label for="inp-sl">Stop Loss</label>
-          <input id="inp-sl" type="number" min="0" step="any" placeholder="optional" />
-        </div>
-
-        <!-- Take Profit -->
-        <div class="field">
-          <label for="inp-tp">Take Profit</label>
-          <input id="inp-tp" type="number" min="0" step="any" placeholder="optional" />
-        </div>
-
-        <!-- Note -->
-        <div class="field full-width">
-          <label for="inp-note">Note</label>
-          <textarea id="inp-note" placeholder="Optional note..."></textarea>
-        </div>
-
-      </div><!-- /form-grid -->
-
-      <div style="display: flex; gap: 8px; margin-top: 10px;">
-        <button type="submit" id="btn-submit" class="btn-add" style="margin-top: 0; flex: 1;">Add Position</button>
-        <button type="button" id="btn-cancel" class="btn-add"
-          style="margin-top: 0; flex: 1; display: none; background: var(--bg-hover);">Cancel</button>
+    <!-- ── Portfolio List ── -->
+    <section class="list-section">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+        <div class="list-title" style="margin-bottom: 0;">📋 Portfolio</div>
+        <button id="btn-toggle-form" class="btn" style="background: var(--accent-blue); color: white;">➕ New
+          Position</button>
       </div>
-    </form>
-  </section>
+      <div id="portfolio-list"></div>
+    </section>
+  </div><!-- /section-portfolio -->
 
-  <!-- ── Portfolio List ── -->
-  <section class="list-section">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-      <div class="list-title" style="margin-bottom: 0;">📋 Portfolio</div>
-      <button id="btn-toggle-form" class="btn" style="background: var(--accent-blue); color: white;">➕ New
-        Position</button>
-    </div>
-    <div id="portfolio-list"></div>
-  </section>
+  <!-- ── AI Advisor Section ── -->
+  <div id="section-advisor" class="tab-content">
+    <section class="advisor-section">
+      <div class="advisor-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <div class="list-title">🚀 Săn Cổ Phiếu</div>
+          <button id="btn-clear-scanner" class="btn"
+            style="background:none; border:none; color:var(--text-muted); font-size:11px; cursor:pointer; padding:0;">🗑
+            Xóa</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:8px; align-items:flex-end;">
+          <div style="display:flex; gap:8px;">
+            <button id="btn-scan-market" class="btn"
+              style="background:var(--bg-hover); color:var(--text-primary); border:1px solid var(--border);">🔍 1. Quét
+              Dữ Liệu</button>
+            <button id="btn-ai-analyze" class="btn"
+              style="background:linear-gradient(90deg, #1A73E8, #8E24AA); color:white; display:none;">🤖 2. AI Phân
+              Tích</button>
+          </div>
+          <div class="target-input-group">
+            <label>Mục tiêu:</label>
+            <input id="inp-target-profit" type="number" value="1" step="0.5" style="width:40px;" />
+            <span>%/ngày</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="advisor-content">
+        <!-- Khu vực kết quả AI (Hiện sau khi phân tích) -->
+        <div id="ai-top-picks" style="display:none; margin-bottom: 20px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--profit); margin-bottom:10px; padding-bottom:4px;">
+            <div class="list-title" style="font-size:12px; color:var(--profit); border-bottom:none; margin-bottom:0; padding-bottom:0;">💎 Top Cổ Phiếu AI Khuyên Dùng</div>
+            <button id="btn-clear-ai" class="btn" style="background:none; border:none; color:var(--text-muted); font-size:10px; cursor:pointer;">🗑 Xóa Gợi Ý</button>
+          </div>
+          <div id="scanner-ai-results" class="scanner-results"></div>
+        </div>
+
+        <!-- Khu vực kết quả Quét Gốc -->
+        <div id="raw-scan-list">
+          <div class="list-title"
+            style="font-size:12px; color:var(--text-muted); border-bottom:1px solid var(--border); padding-bottom:4px; margin-bottom:10px;">
+            📊 Danh Sách Quét Thị Trường (Gốc)</div>
+          <div id="scanner-raw-results" class="scanner-results">
+            <div class="empty-state">Bấm "1. Quét Dữ Liệu" để lấy thông tin mới nhất.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div><!-- /section-advisor -->
+
+  <!-- ── System Logs Section ── -->
+  <div id="section-logs" class="tab-content">
+    <section class="advisor-section">
+      <div class="advisor-header">
+        <div class="list-title">📜 Nhật ký hệ thống</div>
+        <button id="btn-clear-logs" class="btn" style="background:var(--loss); color:white; font-size:11px;">🗑 Xóa
+          Log</button>
+      </div>
+      <div id="log-list" style="display:flex; flex-direction:column; gap:8px;">
+        <!-- Injected by ui.js -->
+        <div class="empty-state">Chưa có hoạt động nào được ghi lại.</div>
+      </div>
+    </section>
+  </div>
 
   <!-- Analysis Modal -->
   <div id="modal-analysis" class="modal-overlay"
@@ -134,7 +209,7 @@
         <button id="btn-close-modal"
           style="background:transparent; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0; line-height:1;">&times;</button>
       </div>
-      <div id="modal-body" style="padding:16px; font-size:13px; line-height:1.5;">
+      <div id="modal-body" style="padding:16px; font-size:13px; line-height:1.5; max-height:400px; overflow-y:auto;">
         <!-- injected by ui.js -->
       </div>
     </div>
@@ -311,6 +386,29 @@
         </div>
 
         <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
+          <h4 style="margin:0 0 8px 0; font-size:12px; color:var(--text-primary);">🧑‍💼 Hồ Sơ Nhà Đầu Tư (AI Advisor)
+          </h4>
+          <div class="field">
+            <label>Phong cách giao dịch:</label>
+            <select id="inp-trading-style" class="full-width"
+              style="padding:8px; background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px;">
+              <option value="lướt sóng">Lướt sóng (Scalping/Surfing)</option>
+              <option value="swing">Giao dịch ngắn hạn (Swing)</option>
+              <option value="dài hạn">Đầu tư dài hạn</option>
+            </select>
+          </div>
+          <div class="field" style="margin-top:8px;">
+            <label>Khẩu vị rủi ro:</label>
+            <select id="inp-risk-level" class="full-width"
+              style="padding:8px; background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px;">
+              <option value="thấp">Thấp (An toàn là trên hết)</option>
+              <option value="trung bình" selected>Trung bình</option>
+              <option value="cao">Cao (Chấp nhận mạo hiểm để tối ưu lợi nhuận)</option>
+            </select>
+          </div>
+        </div>
+
+        <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
           <h4 style="margin:0 0 8px 0; font-size:12px; color:var(--text-primary);">🤖 Telegram Notification (Broker)
           </h4>
           <div class="field">
@@ -336,6 +434,9 @@
         </div>
 
         <div style="margin-top:20px; display:flex; gap:8px; justify-content:flex-end;">
+          <button id="btn-clear-cache" class="btn"
+            style="background:var(--bg-hover); color:var(--text-primary); border:1px solid var(--border); padding:8px 16px; font-size:11px;">🧹
+            Xóa Cache AI</button>
           <button id="btn-save-settings" class="btn"
             style="background:var(--accent-blue); color:white; padding:8px 16px; font-weight:bold;">Lưu Cấu
             Hình</button>
