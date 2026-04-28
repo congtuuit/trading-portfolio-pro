@@ -248,7 +248,20 @@ export function bindScannerEvents(onScan, onAIAnalyze, onAskAdvisor, onViewRaw, 
 
       const symbol = card.dataset.symbol;
 
-      // Nếu bấm vào nút Raw
+      // 1. Nếu bấm vào mã cổ phiếu hoặc icon 📈 -> Mở TradingView
+      const tickerLink = e.target.closest(".ticker-link");
+      if (tickerLink) {
+        e.preventDefault(); // Chặn hành động mặc định của thẻ <a>
+        const url = tickerLink.getAttribute("href");
+        if (typeof chrome !== 'undefined' && chrome.tabs) {
+          chrome.tabs.update({ url: url });
+        } else {
+          window.open(url, "_blank");
+        }
+        return;
+      }
+
+      // 2. Nếu bấm vào nút Raw
       if (e.target.closest(".btn-view-raw")) {
         e.stopPropagation();
         const rawData = JSON.parse(card.dataset.raw || "{}");
@@ -256,7 +269,7 @@ export function bindScannerEvents(onScan, onAIAnalyze, onAskAdvisor, onViewRaw, 
         return;
       }
 
-      // Mặc định là xem tư vấn AI
+      // 3. Mặc định là xem tư vấn AI (Khi click vào các vùng khác của thẻ)
       onAskAdvisor(symbol);
     });
   }
@@ -278,12 +291,21 @@ export function renderScannerResults(results, root = document, timestamp = null,
     html += `<div style="font-size:10px; color:var(--text-muted); margin-bottom:8px; text-align:right; padding-right:4px;">🕒 Cập nhật lần cuối: ${timeStr}</div>`;
   }
 
-  html += results.map(res => `
-    <div class="scanner-card" data-symbol="${res.ticker}" data-raw='${JSON.stringify(res).replace(/'/g, "&apos;")}'>
-      <div class="scanner-main">
-        <div style="display:flex; align-items:center; gap:6px;">
-          <span class="scanner-ticker">${res.symbol}</span>
-          <a href="https://vn.tradingview.com/chart/?symbol=${res.ticker}" target="_blank" title="Xem biểu đồ TradingView" style="text-decoration:none; font-size:12px; line-height:1; cursor:pointer;">📈</a>
+  const isAIList = containerId === "#scanner-ai-results";
+
+  html += results.map(res => {
+    const ticker = res.ticker || res.symbol || res.s;
+    const displayTicker = res.s || (res.symbol && res.symbol.includes(':') ? res.symbol.split(':')[1] : res.symbol) || ticker;
+    const tvUrl = `https://vn.tradingview.com/chart/?symbol=${ticker}`;
+
+    return `
+      <div class="scanner-card ${isAIList ? 'ai-card' : ''}" data-symbol="${ticker}" data-raw='${JSON.stringify(res).replace(/'/g, "&apos;")}'>
+        <div class="scanner-main">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <a href="${tvUrl}" target="_self" class="ticker-link" title="Xem biểu đồ TradingView (tab hiện tại)">
+              <span class="scanner-ticker">${displayTicker}</span>
+              <span style="font-size:11px;">📈</span>
+            </a>
           <span class="scanner-name">${res.description || res.name}</span>
         </div>
         <div class="scanner-price-info">
@@ -293,7 +315,8 @@ export function renderScannerResults(results, root = document, timestamp = null,
           </div>
         </div>
       </div>
-      <div class="ai-reason">
+        ${isAIList ? `
+          <div class="ai-reason">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
           <span>🤖 <strong>AI:</strong></span>
           ${res.aiScore ? `<span style="background:${res.aiScore >= 8 ? 'var(--profit)' : 'var(--warning, #f1c40f)'}; color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:bold;">An toàn: ${res.aiScore}/10</span>` : ''}
@@ -302,12 +325,15 @@ export function renderScannerResults(results, root = document, timestamp = null,
           ${res.aiReason}
         </div>
         
-        <!-- Bảng kế hoạch rút gọn -->
+        <!-- Bảng kế hoạch giao dịch chi tiết -->
         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; background:rgba(255,255,255,0.05); padding:8px; border-radius:6px; border:1px dashed rgba(255,255,255,0.1);">
-          <div style="font-size:10px;">🎯 Target: <strong style="color:var(--profit);">${res.aiTarget || 'N/A'}</strong></div>
-          <div style="font-size:10px;">📥 Entry: <strong style="color:var(--text-primary);">${res.aiEntry || 'N/A'}</strong></div>
+          <div style="font-size:10px;">📥 Vào (Entry): <strong style="color:var(--text-primary);">${res.aiEntry || 'N/A'}</strong></div>
           <div style="font-size:10px;">⏳ Giữ: <strong style="color:var(--warning, #f1c40f);">${res.aiDuration || 0} phiên</strong></div>
-          <div style="font-size:10px;">🔥 Winrate: <strong style="color:#00e676;">${res.aiWinRate || 0}%</strong></div>
+          <div style="font-size:10px;">🎯 Target: <strong style="color:var(--profit);">${res.aiTarget || 'N/A'}</strong></div>
+          <div style="font-size:10px;">🛡️ Cắt lỗ: <strong style="color:var(--loss);">${res.aiStoploss || 'N/A'}</strong></div>
+          <div style="font-size:10px; grid-column: span 2; border-top: 1px solid rgba(255,255,255,0.05); padding-top:4px; margin-top:2px;">
+            🔥 Xác suất thắng: <strong style="color:#00e676;">${res.aiWinRate || 0}%</strong>
+          </div>
         </div>
       </div>
       <div class="scanner-stats">
@@ -316,9 +342,11 @@ export function renderScannerResults(results, root = document, timestamp = null,
           <span>Vol: <span class="stat-val">${(res.volume / 1000000).toFixed(1)}M</span></span>
         </div>
         <button class="btn-view-raw" style="background:var(--bg-input); border:1px solid var(--border); color:var(--text-muted); font-size:10px; padding:2px 6px; border-radius:4px;">Raw 📄</button>
+          </div>
+        ` : ''}
       </div>
-    </div>
-  `).join("");
+    `;
+  }).join("");
 
   container.innerHTML = html;
 }

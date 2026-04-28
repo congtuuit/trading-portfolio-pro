@@ -62,20 +62,45 @@ export async function screenPotentialStocks(rawStocks, targetProfit, settings) {
     const prompt = `Dữ liệu cổ phiếu (JSON):
 ${cleanedData}
 
-Mục tiêu: Lướt sóng ~${targetProfit}%/phiên. Chọn 3-10 mã tốt nhất.
+Dữ liệu phải dựa trên:
+- Xu hướng timeframe D1
+- Volume trung bình >= 1 triệu cổ/phiên
+- Ưu tiên cổ phiếu có dòng tiền mạnh, tăng thanh khoản đột biến
+- Loại bỏ cổ phiếu thanh khoản thấp, bị thao túng, hoặc sideway yếu
 
-Yêu cầu trả về danh sách theo định dạng chính xác từng dòng như sau:
-Mã: [Ticker] | Lý do: [Lý do ngắn] | Điểm: [0-10] | Phiên: [Số phiên] | Vào: [Giá vào] | Mục tiêu: [Giá mục tiêu] | Win: [0-100]
+Chiến lược:
+- Ưu tiên cổ phiếu breakout khỏi nền tích lũy hoặc kháng cự gần
+- Có volume spike xác nhận
+- Xu hướng tăng (MA20 > MA50 hoặc giá nằm trên MA20)
+- Momentum tốt
 
-CHỈ TRẢ VỀ DANH SÁCH CÁC DÒNG, KHÔNG GIẢI THÍCH GÌ THÊM.`;
+Mục tiêu:
+- Lướt sóng trong 3–5 phiên
+- Target lợi nhuận ~${targetProfit}% nhưng phải thực tế theo vùng kháng cự gần nhất
 
-    const systemPrompt = "Bạn là chuyên gia trading ngắn hạn, giỏi phân tích dòng tiền và breakout. Bạn luôn trả về kết quả dưới dạng danh sách dòng văn bản, mỗi dòng một mã cổ phiếu.";
+Bắt buộc:
+- Có giá vào hợp lý (gần breakout hoặc retest)
+- Có stop loss rõ ràng (rủi ro < 3-5%)
+- Risk/Reward >= 1.5
+
+Đánh giá:
+- Điểm (0-10): dựa trên sức mạnh breakout + volume + xu hướng
+- Win (%): xác suất đạt target dựa trên cấu trúc giá và dòng tiền
+
+Yêu cầu trả về:
+Mỗi dòng một mã theo format:
+
+Mã: [Ticker] | Lý do: [Breakout + dòng tiền ngắn gọn] | Điểm: [0-10] | Phiên: [3-5] | Vào: [Giá vào] | Mục tiêu: [Giá mục tiêu] | Cắt lỗ: [Giá stoploss] | Win: [0-100]
+
+Chỉ trả về danh sách, không giải thích thêm.`;
+
+    const systemPrompt = "Bạn là chuyên gia trading ngắn hạn (T+3 đến T+5), giỏi phân tích breakout, dòng tiền và hành vi giá.";
 
     const response = await queryAIWithSystem(prompt, systemPrompt, settings);
-    
+
     // 2. Phân tích văn bản thô (Mỗi dòng một mã)
     const lines = response.split('\n').filter(l => l.includes('Mã:') && l.includes('|'));
-    
+
     const results = lines.map(line => {
       try {
         const parts = {};
@@ -90,9 +115,10 @@ CHỈ TRẢ VỀ DANH SÁCH CÁC DÒNG, KHÔNG GIẢI THÍCH GÌ THÊM.`;
           s: parts['mã'],
           r: parts['lý do'] || "",
           sc: parseFloat(parts['điểm']) || 0,
-          d: parseInt(parts['phiên']) || 0,
+          d: parts['phiên'] || "3-5",
           e: parseFloat(parts['vào']) || 0,
           t: parseFloat(parts['mục tiêu']) || 0,
+          sl: parseFloat(parts['cắt lỗ']) || 0,
           w: parseFloat(parts['win']) || 0
         };
       } catch (e) {
@@ -234,7 +260,7 @@ Nhiệm vụ:
 3. Nếu PHÙ HỢP → đưa kế hoạch giao dịch cụ thể
 
 Phân tích theo cấu trúc:
-[1] Tóm tắt & Điểm an toàn (Scale 1-10 cho đầu tư ngắn hạn)
+[1] Tóm tắt & Điểm an toàn (Scale từ 1 đến 10 cho đầu tư ngắn hạn)
 [2] Dự báo thời hạn (Vị thế còn an toàn trong bao nhiêu phiên tới?)
 [3] Đánh giá Win Rate (%)
 [4] Phù hợp với user? (Có/Không + Lý do)

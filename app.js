@@ -303,11 +303,14 @@ export async function initApp(root) {
         }
         return { 
           ...raw, 
+          ticker: raw.ticker || raw.symbol || aiSymbol, // Đảm bảo luôn có ticker đầy đủ
+          symbol: raw.symbol || aiSymbol,
           aiReason: ai.r, 
           aiScore: ai.sc || 0,
           aiDuration: ai.d || 0,
           aiEntry: ai.e || "N/A",
           aiTarget: ai.t || "N/A",
+          aiStoploss: ai.sl || "N/A",
           aiWinRate: ai.w || 0
         };
       }).filter(r => r !== null);
@@ -315,11 +318,8 @@ export async function initApp(root) {
       console.log("[TPP] Final matched results count:", finalResults.length);
       addSystemLog('DEBUG', 'Kết quả sau khi khớp', { totalAI: aiScreenerResults.length, matched: finalResults.length });
 
-      // Sắp xếp theo điểm số an toàn giảm dần
-      finalResults.sort((a, b) => b.aiScore - a.aiScore);
-
-      // Sắp xếp theo điểm số an toàn giảm dần
-      finalResults.sort((a, b) => b.aiScore - a.aiScore);
+      // Sắp xếp theo tỉ lệ thắng (Winrate) giảm dần
+      finalResults.sort((a, b) => b.aiWinRate - a.aiWinRate);
 
       // Lưu kết quả vào storage
       const timestamp = Date.now();
@@ -340,24 +340,34 @@ export async function initApp(root) {
       return;
     }
 
-    // 2. Nếu không có cache, lấy dữ liệu và gọi AI
-    const dataMap = await fetchPricesMap([symbol]);
-    const fullData = dataMap[symbol];
+    // 1. Tìm dữ liệu đầy đủ từ danh sách đã quét
+    let fullData = lastScannedData.find(s => s.ticker === symbol || s.symbol === symbol);
+    
+    // Nếu không tìm thấy trực tiếp, thử đối chiếu mã rút gọn (AI trả về 'TCB' thay vì 'HOSE:TCB')
+    if (!fullData && !symbol.includes(':')) {
+      fullData = lastScannedData.find(s => {
+        const tickerOnly = s.ticker ? s.ticker.split(':')[1] : "";
+        const symbolOnly = s.symbol ? s.symbol.split(':')[1] : "";
+        return tickerOnly === symbol || symbolOnly === symbol;
+      });
+    }
 
     if (!fullData) {
-      alert("Không tìm thấy dữ liệu cho mã " + symbol);
+      alert(`Không tìm thấy dữ liệu gốc cho mã ${symbol}. Vui lòng thử Quét Dữ Liệu lại.`);
       return;
     }
 
-    showAdviceModal(symbol, `<div class="empty-state">⏳ Đang đối chiếu với hồ sơ nhà đầu tư của bạn...</div>`);
+    // Cập nhật symbol chuẩn (có sàn) để hiển thị
+    const fullSymbol = fullData.ticker || fullData.symbol;
+    showAdviceModal(fullSymbol, `<div class="empty-state">⏳ Đang đối chiếu với hồ sơ nhà đầu tư của bạn...</div>`);
 
     try {
-      const advice = await getDetailedAdvice(symbol, fullData, appSettings);
+      const advice = await getDetailedAdvice(fullSymbol, fullData, appSettings);
       
       // Lưu vào Cache
-      await saveAdviceCache(symbol, advice);
+      await saveAdviceCache(fullSymbol, advice);
       
-      showAdviceModal(symbol, advice);
+      showAdviceModal(fullSymbol, advice);
     } catch (err) {
       root.querySelector("#modal-body").innerHTML = `<div class="pnl loss">❌ Lỗi AI Advisor: ${err.message}</div>`;
     }
