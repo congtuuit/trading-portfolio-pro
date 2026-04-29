@@ -305,8 +305,11 @@ export async function initApp(root) {
     root.querySelector("#btn-export")?.addEventListener("click", () => {
       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(portfolio));
       const a = document.createElement("a");
-      a.href = dataStr; a.download = `portfolio_${new Date().toISOString().slice(0, 10)}.json`;
-      root.appendChild(a); a.click(); a.remove();
+      a.href = dataStr; 
+      a.download = `portfolio_${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a); 
+      a.click(); 
+      a.remove();
     });
 
     root.querySelector("#btn-import")?.addEventListener("click", () => {
