@@ -20,6 +20,31 @@ function fmtSigned(n) {
   return (n >= 0 ? "+" : "") + fmt(n);
 }
 
+/** Helper to format price for display (handles divisor) */
+function fmtDisplay(val, symbol) {
+  if (val === null || val === undefined) return "—";
+  const divisor = getDivisor(symbol);
+  return fmt(parseFloat(val) / divisor);
+}
+
+/** Generic modal toggle helper */
+export function toggleModal(root, modalId, show = true) {
+  const modal = root.querySelector(`#${modalId}`);
+  if (modal) modal.style.display = show ? "flex" : "none";
+}
+
+/** Standardize modal close event binding */
+export function bindModalClose(root, modalId, btnCloseId) {
+  const modal = root.querySelector(`#${modalId}`);
+  const btnClose = root.querySelector(`#${btnCloseId}`);
+  if (modal && btnClose) {
+    btnClose.addEventListener("click", () => toggleModal(root, modalId, false));
+    modal.addEventListener("click", (e) => {
+      if (e.target === modal) toggleModal(root, modalId, false);
+    });
+  }
+}
+
 /** Generate Confluence Analysis HTML from TV Scanner data */
 function getAnalysisHTML(sym, data, tradeType) {
   if (!data || data.close === 0) return "<span>Chưa có dữ liệu</span>";
@@ -126,13 +151,8 @@ export function bindHistoryEvents(cbClear, root = document) {
   const btnClearHistory = root.querySelector("#btn-clear-history");
   
   if (btnHistory && modalHistory) {
-    btnHistory.addEventListener("click", () => {
-      modalHistory.style.display = "flex";
-    });
-    btnCloseHistory.addEventListener("click", () => modalHistory.style.display = "none");
-    modalHistory.addEventListener("click", (e) => {
-      if (e.target === modalHistory) modalHistory.style.display = "none";
-    });
+    btnHistory.addEventListener("click", () => toggleModal(root, "modal-history", true));
+    bindModalClose(root, "modal-history", "btn-close-modal-history");
   }
   
   if (btnClearHistory) {
@@ -518,15 +538,21 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
       root.querySelector("#inp-tg-chatid").value = settings.tgChatId || "";
       root.querySelector("#chk-tg-enabled").checked = !!settings.tgEnabled;
 
+      // Load Lookback Periods slider
+      const sliderEl = root.querySelector("#inp-lookback");
+      const displayEl = root.querySelector("#lookback-display");
+      if (sliderEl) {
+        sliderEl.value = settings.lookbackPeriods || 20;
+        if (displayEl) displayEl.textContent = `${sliderEl.value} phiên`;
+        sliderEl.oninput = () => { if (displayEl) displayEl.textContent = `${sliderEl.value} phiên`; };
+      }
+
       const msgEl = root.querySelector("#msg-api-key");
       if (msgEl) msgEl.innerHTML = `Lấy Key tại: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent-blue);">Google AI Studio</a> hoặc <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent-blue);">OpenAI</a>`;
-      modalSettings.style.display = "flex";
+      toggleModal(root, "modal-settings", true);
     });
     
-    btnCloseSettings.addEventListener("click", () => modalSettings.style.display = "none");
-    modalSettings.addEventListener("click", (e) => {
-      if (e.target === modalSettings) modalSettings.style.display = "none";
-    });
+    bindModalClose(root, "modal-settings", "btn-close-modal-settings");
 
     const btnTestTg = root.querySelector("#btn-test-tg");
     if (btnTestTg) {
@@ -615,10 +641,60 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
       settings.tgChatId = root.querySelector("#inp-tg-chatid").value.trim();
       settings.tgEnabled = root.querySelector("#chk-tg-enabled").checked;
 
+      // Save Lookback Periods
+      const sliderEl = root.querySelector("#inp-lookback");
+      if (sliderEl) settings.lookbackPeriods = parseInt(sliderEl.value) || 20;
+
       await onSaveSettings(settings);
       modalSettings.style.display = "none";
     });
   }
+}
+
+/** Render a single trade card HTML */
+function renderTradeCard(trade, priceData) {
+  const isProfit = (trade.type === "BUY" ? (priceData.close >= trade.entryPrice) : (priceData.close <= trade.entryPrice));
+  const { pnl, pct } = calculatePnL(trade, priceData.close);
+  
+  const pnlClass = pnl >= 0 ? "profit" : "loss";
+  const typeClass = trade.type === "BUY" ? "badge-buy" : "badge-sell";
+  const changeClass = priceData.change >= 0 ? "profit" : "loss";
+
+  let trendIndicator = "";
+  if (priceData.ema200 && priceData.close) {
+    if (priceData.close > priceData.ema200) trendIndicator = "<span style='color:var(--profit);font-size:10px;margin-left:4px;' title='Trend Tăng'>▲</span>";
+    else if (priceData.close < priceData.ema200) trendIndicator = "<span style='color:var(--loss);font-size:10px;margin-left:4px;' title='Trend Giảm'>▼</span>";
+  }
+
+  const safeSymbol = escapeHTML(trade.symbol);
+  const safeNote = trade.note ? escapeHTML(trade.note) : "";
+  const noteHtml = safeNote ? `<div class="trade-note">💬 ${safeNote}</div>` : "";
+
+  return `
+    <div class="trade-header">
+      <span class="trade-symbol">${safeSymbol}${trendIndicator} <span class="btn-info" data-id="${trade.id}" style="cursor:pointer;font-size:12px;margin-left:4px;filter:grayscale(100%);" title="Xem phân tích kỹ thuật">ℹ️</span></span>
+      <span class="badge ${typeClass}">${trade.type}</span>
+      <span class="trade-qty">×${fmt(parseFloat(trade.quantity))}</span>
+    </div>
+    <div class="trade-prices">
+      <span class="price-item">Entry <strong>${fmtDisplay(trade.entryPrice, trade.symbol)}</strong></span>
+      <span class="price-item">Current <strong>${fmtDisplay(priceData.close, trade.symbol)}</strong> <span class="${changeClass}">(${fmtSigned(priceData.change)}%)</span></span>
+      <span class="price-item">SL <strong>${fmtDisplay(trade.stopLoss, trade.symbol)}</strong></span>
+      <span class="price-item">TP <strong>${fmtDisplay(trade.takeProfit, trade.symbol)}</strong></span>
+    </div>
+    ${noteHtml}
+    <div class="trade-footer">
+      <div class="pnl ${pnlClass}">
+        ${fmtSigned(pnl / 1000)} <span class="pnl-pct">(${fmtSigned(pct)}%)</span>
+      </div>
+      <div class="trade-actions">
+        <button class="btn btn-view" data-symbol="${safeSymbol}" title="View on TradingView">📈 View</button>
+        <button class="btn btn-close-trade" data-id="${trade.id}" style="background:#089981; color:white;" title="Chốt Lời & Cấn Trừ Hạ Giá Vốn">💰 Chốt</button>
+        <button class="btn btn-dca" data-id="${trade.id}" style="background:#5264b3; color:white;" title="DCA / Gỡ Lỗ">🧮 DCA</button>
+        <button class="btn btn-edit"   data-id="${trade.id}" style="background:var(--bg-input); color:var(--text-primary);">✏️ Edit</button>
+        <button class="btn btn-delete" data-id="${trade.id}">🗑 Delete</button>
+      </div>
+    </div>`;
 }
 
 /**
@@ -660,71 +736,12 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}, root
   let totalPnl = 0;
 
   portfolio.forEach((trade) => {
-    const divisor = getDivisor(trade.symbol);
     const priceData = priceMap[trade.symbol] || {
       close: trade.entryPrice,
       change: 0,
       change_abs: 0,
     };
     
-    // Internal calculation using full prices
-    const { pnl, pct } = calculatePnL(trade, priceData.close);
-    totalPnl += pnl;
-
-    // Display prices (divided by divisor)
-    const currentDisplayPrice = priceData.close / divisor;
-    const entryDisplayPrice = parseFloat(trade.entryPrice) / divisor;
-    const slDisplayPrice = trade.stopLoss ? (parseFloat(trade.stopLoss) / divisor) : null;
-    const tpDisplayPrice = trade.takeProfit ? (parseFloat(trade.takeProfit) / divisor) : null;
-
-    const isProfit = pnl >= 0;
-    const pnlClass = isProfit ? "profit" : "loss";
-    const typeClass = trade.type === "BUY" ? "badge-buy" : "badge-sell";
-
-    const changePct = priceData.change;
-    const changeClass = changePct >= 0 ? "profit" : "loss";
-
-    let trendIndicator = "";
-    if (priceData.ema200 && priceData.close) {
-      if (priceData.close > priceData.ema200) trendIndicator = "<span style='color:var(--profit);font-size:10px;margin-left:4px;' title='Trend Tăng'>▲</span>";
-      else if (priceData.close < priceData.ema200) trendIndicator = "<span style='color:var(--loss);font-size:10px;margin-left:4px;' title='Trend Giạm'>▼</span>";
-    }
-
-    const slText = slDisplayPrice ? fmt(slDisplayPrice) : "—";
-    const tpText = tpDisplayPrice ? fmt(tpDisplayPrice) : "—";
-// Sanitize user-controllable strings for HTML
-    const safeSymbol = escapeHTML(trade.symbol);
-    const safeNote = trade.note ? escapeHTML(trade.note) : "";
-    const noteHtml = safeNote
-      ? `<div class="trade-note">💬 ${safeNote}</div>`
-      : "";
-
-    const html = `
-      <div class="trade-header">
-        <span class="trade-symbol">${safeSymbol}${trendIndicator} <span class="btn-info" data-id="${trade.id}" style="cursor:pointer;font-size:12px;margin-left:4px;filter:grayscale(100%);" title="Xem phân tích kỹ thuật">ℹ️</span></span>
-        <span class="badge ${typeClass}">${trade.type}</span>
-        <span class="trade-qty">×${fmt(parseFloat(trade.quantity))}</span>
-      </div>
-      <div class="trade-prices">
-        <span class="price-item">Entry <strong>${fmt(entryDisplayPrice)}</strong></span>
-        <span class="price-item">Current <strong>${fmt(currentDisplayPrice)}</strong> <span class="${changeClass}">(${fmtSigned(changePct)}%)</span></span>
-        <span class="price-item">SL <strong>${slText}</strong></span>
-        <span class="price-item">TP <strong>${tpText}</strong></span>
-      </div>
-      ${noteHtml}
-      <div class="trade-footer">
-        <div class="pnl ${pnlClass}">
-          ${fmtSigned(pnl / 1000)} <span class="pnl-pct">(${fmtSigned(pct)}%)</span>
-        </div>
-      <div class="trade-actions">
-        <button class="btn btn-view" data-symbol="${safeSymbol}" title="View on TradingView">📈 View</button>
-        <button class="btn btn-close-trade" data-id="${trade.id}" style="background:#089981; color:white;" title="Chốt Lời & Cấn Trừ Hạ Giá Vốn">💰 Chốt</button>
-        <button class="btn btn-dca" data-id="${trade.id}" style="background:#5264b3; color:white;" title="DCA / Gỡ Lỗ">🧮 DCA</button>
-        <button class="btn btn-edit"   data-id="${trade.id}" style="background:var(--bg-input); color:var(--text-primary);">✏️ Edit</button>
-        <button class="btn btn-delete" data-id="${trade.id}">🗑 Delete</button>
-      </div>
-      </div>`;
-
     let card = container.querySelector(`.trade-card[data-id="${trade.id}"]`);
     if (!card) {
       card = document.createElement("div");
@@ -732,150 +749,98 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}, root
       card.dataset.id = trade.id;
       container.appendChild(card);
     }
-    card.innerHTML = html;
+    card.innerHTML = renderTradeCard(trade, priceData);
   });
 
   updateSummaryBar(portfolio, priceMap, root);
 
-  // Bind info buttons
-  root.querySelectorAll(".btn-info").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      const id = e.target.dataset.id;
-      const trade = portfolio.find(t => t.id === id);
-      if (!trade) return;
-      
-      const priceData = priceMap[trade.symbol] || { close: trade.entryPrice, change:0, change_abs:0 };
-      const analysisHtml = getAnalysisHTML(trade.symbol, priceData, trade.type);
-      
-      const typeClass = trade.type === "BUY" ? "badge-buy" : "badge-sell";
-      root.querySelector("#modal-title").innerHTML = `Phân Tích <strong>${trade.symbol}</strong> <span class="badge ${typeClass}" style="margin-left:8px;font-size:10px;">${trade.type}</span>`;
-      root.querySelector("#modal-body").innerHTML = analysisHtml;
-      root.querySelector("#modal-analysis").style.display = "flex";
-    });
-  });
-
-  // Bind DCA buttons
-  root.querySelectorAll(".btn-dca").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      const id = e.target.dataset.id;
-      const trade = portfolio.find(t => t.id === id);
-      if (!trade) return;
-      
-      const priceData = priceMap[trade.symbol] || { close: trade.entryPrice };
-      const divisor = getDivisor(trade.symbol);
-      
-      currentDCATrade = trade;
-      currentDCAPrice = priceData.close; // Store full price for AI synchronization
-      
-      const typeClass = trade.type === "BUY" ? "badge-buy" : "badge-sell";
-      root.querySelector("#dca-title").innerHTML = `🧮 Gỡ Lỗ / DCA: <strong>${trade.symbol}</strong> <span class="badge ${typeClass}" style="margin-left:8px;font-size:10px;">${trade.type}</span>`;
-      root.querySelector("#dca-qty").textContent = fmt(trade.quantity);
-      root.querySelector("#dca-entry").textContent = fmt(parseFloat(trade.entryPrice) / divisor);
-      root.querySelector("#dca-current").textContent = fmt(currentDCAPrice / divisor);
-      
-      const aiResponse = root.querySelector("#ai-dca-response");
-      if (aiResponse) {
-        aiResponse.style.display = "none";
-        aiResponse.innerHTML = "";
+  // ── Event Delegation for Portfolio Actions ──
+  if (!container.dataset.bound) {
+    container.addEventListener("click", async (e) => {
+      const btn = e.target.closest(".btn");
+      if (!btn) {
+        // Handle info icon specifically
+        const infoBtn = e.target.closest(".btn-info");
+        if (infoBtn) {
+          const id = infoBtn.dataset.id;
+          const trade = (await import("./storage.js").then(m => m.getPortfolio())).find(t => t.id === id);
+          if (!trade) return;
+          const prices = priceMap[trade.symbol] || { close: trade.entryPrice, change: 0 };
+          const analysisHtml = getAnalysisHTML(trade.symbol, prices, trade.type);
+          const typeClass = trade.type === "BUY" ? "badge-buy" : "badge-sell";
+          root.querySelector("#modal-title").innerHTML = `Phân Tích <strong>${trade.symbol}</strong> <span class="badge ${typeClass}" style="margin-left:8px;font-size:10px;">${trade.type}</span>`;
+          root.querySelector("#modal-body").innerHTML = analysisHtml;
+          toggleModal(root, "modal-analysis", true);
+        }
+        return;
       }
-      
-      root.querySelector("#inp-dca-qty").value = "";
-      root.querySelector("#dca-result").innerHTML = "Hãy nhập số lượng mua/bán thêm để xem kịch bản hòa vốn.";
-      root.querySelector("#modal-dca").style.display = "flex";
-    });
-  });
 
-  // Bind Close / Rollover buttons
-  root.querySelectorAll(".btn-close-trade").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      const id = e.target.dataset.id;
-      const trade = portfolio.find(t => t.id === id);
-      if (!trade) return;
-      
-      const priceData = priceMap[trade.symbol] || { close: trade.entryPrice };
-      const divisor = getDivisor(trade.symbol);
-      
-      currentCloseTradeId = id;
-      
-      root.querySelector("#close-sym").textContent = `${trade.symbol} (${trade.type})`;
-      
-      const inpQty = root.querySelector("#inp-close-qty");
-      const inpPrice = root.querySelector("#inp-close-price");
-      const pnlEl = root.querySelector("#close-pnl");
-      
-      // Default values
-      inpQty.value = parseFloat(trade.quantity);
-      inpPrice.value = parseFloat(priceData.close) / divisor;
-      
-      // Function to dynamically recalculate PnL
-      const updateDynamicPnl = () => {
-        const q = parseFloat(inpQty.value) || 0;
-        const p = parseFloat(inpPrice.value) || 0;
-        
-        // Full price logic
-        const exitFullPrice = p * divisor;
-        const entryFullPrice = parseFloat(trade.entryPrice);
-        
-        let pnl = 0;
-        if (trade.type === "BUY") {
-           pnl = (exitFullPrice - entryFullPrice) * q;
-        } else {
-           pnl = (entryFullPrice - exitFullPrice) * q;
-        }
-        
-        currentRealizedPnl = pnl;
-        pnlEl.textContent = fmtSigned(pnl / 1000);
-        pnlEl.style.color = pnl >= 0 ? "var(--profit)" : "var(--loss)";
-      };
-      
-      inpQty.removeEventListener("input", updateDynamicPnl);
-      inpPrice.removeEventListener("input", updateDynamicPnl);
-      
-      inpQty.addEventListener("input", updateDynamicPnl);
-      inpPrice.addEventListener("input", updateDynamicPnl);
-      
-      // Initial trigger
-      updateDynamicPnl();
-      
-      const selTarget = root.querySelector("#sel-merge-target");
-      selTarget.innerHTML = '<option value="">-- Chỉ xóa lệnh (Giữ nguyên các mã khác) --</option>';
-      
-      portfolio.forEach(t => {
-        if (t.id !== id && t.symbol === trade.symbol) {
-          const opt = document.createElement("option");
-          opt.value = t.id;
-          opt.textContent = `Gộp vào: ${t.symbol} (SL: ${fmt(t.quantity)} @ ${fmt(parseFloat(t.entryPrice) / divisor)})`;
-          selTarget.appendChild(opt);
-        }
-      });
-      
-      root.querySelector("#modal-close").style.display = "flex";
-    });
-  });
+      const id = btn.dataset.id;
+      const symbol = btn.dataset.symbol;
 
-  // ── Bind action buttons ──
-  container.querySelectorAll(".btn-view").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const sym = btn.dataset.symbol;
-      chrome.tabs.update({
-        url: `https://www.tradingview.com/chart/?symbol=${sym}`,
-      });
-    });
-  });
-
-  container.querySelectorAll(".btn-edit").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (onEdit) onEdit(btn.dataset.id);
-    });
-  });
-
-  container.querySelectorAll(".btn-delete").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      if (confirm(`Delete this trade?`)) {
-        await onDelete(btn.dataset.id);
+      if (btn.classList.contains("btn-view")) {
+        chrome.tabs.update({ url: `https://www.tradingview.com/chart/?symbol=${symbol}` });
+      } else if (btn.classList.contains("btn-edit")) {
+        if (onEdit) onEdit(id);
+      } else if (btn.classList.contains("btn-delete")) {
+        if (confirm(`Delete this trade?`)) await onDelete(id);
+      } else if (btn.classList.contains("btn-dca")) {
+        const trade = (await import("./storage.js").then(m => m.getPortfolio())).find(t => t.id === id);
+        if (!trade) return;
+        const priceData = priceMap[trade.symbol] || { close: trade.entryPrice };
+        const divisor = getDivisor(trade.symbol);
+        currentDCATrade = trade;
+        currentDCAPrice = priceData.close;
+        const typeClass = trade.type === "BUY" ? "badge-buy" : "badge-sell";
+        root.querySelector("#dca-title").innerHTML = `🧮 Gỡ Lỗ / DCA: <strong>${trade.symbol}</strong> <span class="badge ${typeClass}" style="margin-left:8px;font-size:10px;">${trade.type}</span>`;
+        root.querySelector("#dca-qty").textContent = fmt(trade.quantity);
+        root.querySelector("#dca-entry").textContent = fmtDisplay(trade.entryPrice, trade.symbol);
+        root.querySelector("#dca-current").textContent = fmtDisplay(currentDCAPrice, trade.symbol);
+        const aiResponse = root.querySelector("#ai-dca-response");
+        if (aiResponse) { aiResponse.style.display = "none"; aiResponse.innerHTML = ""; }
+        root.querySelector("#inp-dca-qty").value = "";
+        root.querySelector("#dca-result").innerHTML = "Hãy nhập số lượng mua/bán thêm để xem kịch bản hòa vốn.";
+        toggleModal(root, "modal-dca", true);
+      } else if (btn.classList.contains("btn-close-trade")) {
+        const trade = (await import("./storage.js").then(m => m.getPortfolio())).find(t => t.id === id);
+        if (!trade) return;
+        const priceData = priceMap[trade.symbol] || { close: trade.entryPrice };
+        const divisor = getDivisor(trade.symbol);
+        currentCloseTradeId = id;
+        root.querySelector("#close-sym").textContent = `${trade.symbol} (${trade.type})`;
+        const inpQty = root.querySelector("#inp-close-qty");
+        const inpPrice = root.querySelector("#inp-close-price");
+        const pnlEl = root.querySelector("#close-pnl");
+        inpQty.value = parseFloat(trade.quantity);
+        inpPrice.value = parseFloat(priceData.close) / divisor;
+        const updateDynamicPnl = () => {
+          const q = parseFloat(inpQty.value) || 0;
+          const p = parseFloat(inpPrice.value) || 0;
+          const exitFullPrice = p * divisor;
+          const entryFullPrice = parseFloat(trade.entryPrice);
+          let pnl = trade.type === "BUY" ? (exitFullPrice - entryFullPrice) * q : (entryFullPrice - exitFullPrice) * q;
+          currentRealizedPnl = pnl;
+          pnlEl.textContent = fmtSigned(pnl / 1000);
+          pnlEl.style.color = pnl >= 0 ? "var(--profit)" : "var(--loss)";
+        };
+        inpQty.oninput = updateDynamicPnl;
+        inpPrice.oninput = updateDynamicPnl;
+        updateDynamicPnl();
+        const selTarget = root.querySelector("#sel-merge-target");
+        selTarget.innerHTML = '<option value="">-- Chỉ xóa lệnh (Giữ nguyên các mã khác) --</option>';
+        (await import("./storage.js").then(m => m.getPortfolio())).forEach(t => {
+          if (t.id !== id && t.symbol === trade.symbol) {
+            const opt = document.createElement("option");
+            opt.value = t.id;
+            opt.textContent = `Gộp vào: ${t.symbol} (SL: ${fmt(t.quantity)} @ ${fmtDisplay(t.entryPrice, t.symbol)})`;
+            selTarget.appendChild(opt);
+          }
+        });
+        toggleModal(root, "modal-close", true);
       }
     });
-  });
+    container.dataset.bound = "true";
+  }
 }
 
 /**
@@ -888,13 +853,7 @@ export function updateSummaryBar(portfolio, priceMap, root = document) {
 
   portfolio.forEach((trade) => {
     const data = priceMap[trade.symbol] || { close: trade.entryPrice };
-    const divisor = getDivisor(trade.symbol);
-    
-    // Internal calculation using full prices
-    const isBuy = trade.type === "BUY";
-    const pnl = isBuy
-      ? (data.close - trade.entryPrice) * trade.quantity
-      : (trade.entryPrice - data.close) * trade.quantity;
+    const { pnl } = calculatePnL(trade, data.close);
     
     totalPnl += pnl;
     totalValue += data.close * trade.quantity;
@@ -979,10 +938,7 @@ export function bindFormEvents(onSave, root = document) {
   const btnConfirmClose = root.querySelector("#btn-confirm-close");
 
   if (modalClose && btnCloseModalClose) {
-    btnCloseModalClose.addEventListener("click", () => modalClose.style.display = "none");
-    modalClose.addEventListener("click", (e) => {
-      if (e.target === modalClose) modalClose.style.display = "none";
-    });
+    bindModalClose(root, "modal-close", "btn-close-modal-close");
   }
 
   if (btnConfirmClose) {
@@ -1013,14 +969,7 @@ export function bindFormEvents(onSave, root = document) {
   const btnCloseModal = root.querySelector("#btn-close-modal");
 
   if (modalAnalysis && btnCloseModal) {
-    btnCloseModal.addEventListener("click", () => {
-      modalAnalysis.style.display = "none";
-    });
-    modalAnalysis.addEventListener("click", (e) => {
-      if (e.target === modalAnalysis) {
-        modalAnalysis.style.display = "none";
-      }
-    });
+    bindModalClose(root, "modal-analysis", "btn-close-modal");
   }
 
   const modalDCA = root.querySelector("#modal-dca");
@@ -1028,10 +977,7 @@ export function bindFormEvents(onSave, root = document) {
   const inpDCA = root.querySelector("#inp-dca-qty");
 
   if (modalDCA && btnCloseDCA) {
-    btnCloseDCA.addEventListener("click", () => modalDCA.style.display = "none");
-    modalDCA.addEventListener("click", (e) => {
-      if (e.target === modalDCA) modalDCA.style.display = "none";
-    });
+    bindModalClose(root, "modal-dca", "btn-close-dca");
   }
 
   if (inpDCA) {

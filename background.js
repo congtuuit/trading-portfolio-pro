@@ -13,6 +13,7 @@ import { getDivisor } from "./utils.js";
 import { sendTelegramMessage } from "./telegram.js";
 import { suggestEntryExit } from "./analysis.js";
 import { scanVietnamStocks } from "./scanner_data.js";
+import { fetchHistoryDirect } from "./history.js";
 
 const MONITOR_ALARM = "tpp_monitor_alarm";
 const MONITOR_INTERVAL_MINS = 10;
@@ -139,6 +140,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         addSystemLog('ERROR', 'SCAN_STOCKS Failed (Sync)', err.message);
         sendResponse({ success: false, error: err.message });
       }
+      return true;
+
+    case "FETCH_HISTORY":
+      addSystemLog('API', 'FETCH_HISTORY Request', { symbol: message.symbol, periods: message.periods });
+      fetchHistoryDirect(message.symbol, message.periods || 20, message.resolution || 'D')
+        .then(data => {
+          sendResponse({ success: true, data });
+        })
+        .catch(err => {
+          addSystemLog('ERROR', 'FETCH_HISTORY Failed', err.message);
+          sendResponse({ success: false, error: err.message });
+        });
       return true;
 
     default:

@@ -39,7 +39,8 @@ export async function getSettings() {
         apiKey: '',
         tgToken: '',
         tgChatId: '',
-        tgEnabled: false
+        tgEnabled: false,
+        lookbackPeriods: 20
       });
     });
   });

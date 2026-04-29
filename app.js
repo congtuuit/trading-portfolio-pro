@@ -45,11 +45,13 @@ import {
   bindTabEvents,
   bindScannerEvents,
   renderScannerResults,
-  renderSystemLogs
+  renderSystemLogs,
+  toggleModal
 } from "./ui.js";
 import { fetchPricesMap } from "./price.js";
 import { queryAI, fetchModels, screenPotentialStocks, getDetailedAdvice } from "./ai.js";
 import { prepareDataForAI } from "./scanner_data.js";
+import { fetchSymbolHistory, formatHistoryForAI } from "./history.js";
 
 const REFRESH_INTERVAL_MS = 30 * 1000;
 
@@ -60,6 +62,7 @@ export async function initApp(root) {
   let appSettings = null;
   let chatHistory = [];
   let tradeHistory = [];
+  let lastScannedData = [];
 
   async function updatePricesAndRender() {
     const symbols = portfolio.map((t) => t.symbol);
@@ -80,27 +83,19 @@ export async function initApp(root) {
   async function handleSave(tradeData) {
     const priceData = await fetchPricesMap([tradeData.symbol]);
     if (!priceData || Object.keys(priceData).length === 0) {
-      return {
-        success: false,
-        error: "Tên mã giao dịch không tồn tại trên TradingView.",
-      };
+      return { success: false, error: "Tên mã giao dịch không tồn tại trên TradingView." };
     }
 
     if (tradeData.id && tradeData.id.startsWith("trade_")) {
       const index = portfolio.findIndex((t) => t.id === tradeData.id);
-      if (index >= 0) {
-        portfolio[index] = { ...portfolio[index], ...tradeData };
-      } else {
-        portfolio.push(tradeData);
-      }
+      if (index >= 0) portfolio[index] = { ...portfolio[index], ...tradeData };
+      else portfolio.push(tradeData);
     } else {
       tradeData.id = "trade_" + Date.now();
       portfolio.push(tradeData);
     }
 
     await savePortfolio(portfolio);
-
-    renderPortfolio(portfolio, handleDelete, handleEdit, currentPriceMap, root);
     updatePricesAndRender();
     return { success: true };
   }
@@ -113,7 +108,6 @@ export async function initApp(root) {
   async function handleDelete(id) {
     portfolio = portfolio.filter((t) => t.id !== id);
     await savePortfolio(portfolio);
-    renderPortfolio(portfolio, handleDelete, handleEdit, currentPriceMap, root);
     updatePricesAndRender();
   }
 
@@ -122,7 +116,6 @@ export async function initApp(root) {
     if (index >= 0) {
       portfolio[index].entryPrice = newEntry;
       await savePortfolio(portfolio);
-      renderPortfolio(portfolio, handleDelete, handleEdit, currentPriceMap, root);
       updatePricesAndRender();
     }
   }
@@ -152,53 +145,35 @@ export async function initApp(root) {
     const trade = portfolio[index];
     const isBuy = trade.type === "BUY";
     const divisor = getDivisor(trade.symbol);
-
-    const exitFullPrice = closePrice * divisor;
-    const entryFullPrice = parseFloat(trade.entryPrice);
-
-    let pnl = 0;
-    if (isBuy) {
-      pnl = (exitFullPrice - entryFullPrice) * closeQty;
-    } else {
-      pnl = (entryFullPrice - exitFullPrice) * closeQty;
-    }
+    const pnl = (isBuy ? (closePrice * divisor - trade.entryPrice) : (trade.entryPrice - closePrice * divisor)) * closeQty;
 
     const historyRecord = {
-      id: "hist_" + Date.now().toString() + Math.random().toString().slice(2, 5),
+      id: "hist_" + Date.now() + Math.random().toString().slice(2, 5),
       date: Date.now(),
       symbol: trade.symbol,
       type: trade.type,
       qtyClosed: closeQty,
-      entryPrice: parseFloat(trade.entryPrice) / divisor,
+      entryPrice: trade.entryPrice / divisor,
       closePrice: closePrice,
       realizedPnl: pnl
     };
+    
     tradeHistory.push(historyRecord);
     await saveTradeHistory(tradeHistory);
 
     if (targetId) {
       const target = portfolio.find((t) => t.id === targetId);
       if (target) {
-        const targetIsBuy = target.type === "BUY";
         const offset = pnl / parseFloat(target.quantity);
-        if (targetIsBuy) {
-          target.entryPrice = (parseFloat(target.entryPrice) - offset).toFixed(4);
-        } else {
-          target.entryPrice = (parseFloat(target.entryPrice) + offset).toFixed(4);
-        }
+        target.entryPrice = (parseFloat(target.entryPrice) + (target.type === "BUY" ? -offset : offset)).toFixed(4);
       }
     }
 
     const remainingQty = parseFloat(trade.quantity) - closeQty;
-    if (remainingQty <= 0.000001) {
-      portfolio.splice(index, 1);
-    } else {
-      portfolio[index].quantity = remainingQty.toFixed(4);
-    }
+    if (remainingQty <= 0.000001) portfolio.splice(index, 1);
+    else portfolio[index].quantity = remainingQty.toFixed(4);
 
     await savePortfolio(portfolio);
-
-    renderPortfolio(portfolio, handleDelete, handleEdit, currentPriceMap, root);
     updatePricesAndRender();
     renderHistory(tradeHistory, root);
   }
@@ -211,25 +186,20 @@ export async function initApp(root) {
 
   function startAutoRefresh() {
     if (refreshTimer) clearInterval(refreshTimer);
-    refreshTimer = setInterval(() => {
-      updatePricesAndRender();
-    }, REFRESH_INTERVAL_MS);
+    refreshTimer = setInterval(updatePricesAndRender, REFRESH_INTERVAL_MS);
   }
 
   async function sendToChat(prompt) {
     openChatPanel(root);
     appendChatMessage("user", prompt, false, root);
     appendChatMessage("system-typing", "", false, root);
-
     chatHistory.push({ role: "user", text: prompt });
 
     try {
-      const responseText = await queryAI(chatHistory, appSettings);
-      chatHistory.push({ role: "assistant", text: responseText });
+      const res = await queryAI(chatHistory, appSettings);
+      chatHistory.push({ role: "assistant", text: res });
       removeTypingIndicator(root);
-      const escapedResp = escapeHTML(responseText);
-      const formattedResp = escapedResp.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-      appendChatMessage("assistant", formattedResp, true, root);
+      appendChatMessage("assistant", res.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'), true, root);
     } catch (err) {
       removeTypingIndicator(root);
       chatHistory.pop();
@@ -237,234 +207,128 @@ export async function initApp(root) {
     }
   }
 
-  let lastScannedData = [];
-
   async function handleScanMarket() {
-    const scannerContainer = root.querySelector("#scanner-raw-results");
+    const container = root.querySelector("#scanner-raw-results");
     const btnAI = root.querySelector("#btn-ai-analyze");
-    const aiSection = root.querySelector("#ai-top-picks");
-    
-    scannerContainer.innerHTML = `<div class="empty-state">⏳ Đang quét dữ liệu thị trường (50 mã)...</div>`;
-    btnAI.style.display = "none";
-    aiSection.style.display = "none"; // Ẩn kết quả AI cũ khi quét mới
+    container.innerHTML = `
+      <div class="loading-wrapper">
+        <div class="hourglass"></div>
+        <div class="loading-text">Đang quét dữ liệu thị trường...</div>
+      </div>`;
 
     chrome.runtime.sendMessage({ type: "SCAN_STOCKS" }, (res) => {
-      if (chrome.runtime.lastError) {
-        scannerContainer.innerHTML = `<div class="empty-state">❌ Lỗi kết nối Background.</div>`;
-        return;
-      }
-
       if (res && res.success) {
         lastScannedData = res.data;
-        saveRawScannerResults(res.data); // Lưu dữ liệu quét gốc
+        saveRawScannerResults(res.data);
         renderScannerResults(res.data, root, Date.now(), "#scanner-raw-results");
-        if (res.data.length > 0) {
-          btnAI.style.display = "block";
-        }
+        if (res.data.length > 0) btnAI.style.display = "block";
       } else {
-        scannerContainer.innerHTML = `<div class="empty-state">❌ Lỗi: ${res ? res.error : "Unknown"}</div>`;
+        container.innerHTML = `<div class="empty-state">❌ Lỗi: ${res?.error || "Unknown"}</div>`;
       }
     });
   }
 
   async function handleAIAnalyze(targetProfit) {
-    if (!lastScannedData || lastScannedData.length === 0) {
-      alert("Hãy quét dữ liệu trước khi phân tích AI.");
-      return;
-    }
-
     const aiContainer = root.querySelector("#scanner-ai-results");
     const aiSection = root.querySelector("#ai-top-picks");
-    
     aiSection.style.display = "block";
-    aiContainer.innerHTML = `<div class="empty-state">🤖 AI đang phân tích dữ liệu (Mục tiêu ${targetProfit}%)...</div>`;
+    aiContainer.innerHTML = `
+      <div class="loading-wrapper">
+        <div class="hourglass"></div>
+        <div class="loading-text">🤖 AI đang săn tìm siêu cổ phiếu...</div>
+      </div>`;
     
     try {
       const cleanedData = prepareDataForAI(lastScannedData);
-      const aiScreenerResults = await screenPotentialStocks(cleanedData, targetProfit, appSettings);
+      const aiResults = await screenPotentialStocks(cleanedData, targetProfit, appSettings);
       
-      console.log("[TPP] AI Raw Results Count:", aiScreenerResults.length);
-      addSystemLog('DEBUG', 'Dữ liệu thô từ AI', aiScreenerResults);
+      const finalResults = aiResults.map(ai => {
+        const raw = lastScannedData.find(r => (r.ticker || "").includes(ai.s.toUpperCase()));
+        return raw ? { ...raw, aiReason: ai.r, aiScore: ai.sc, aiDuration: ai.d, aiEntry: ai.e, aiTarget: ai.t, aiStoploss: ai.sl, aiWinRate: ai.w } : null;
+      }).filter(Boolean).sort((a, b) => b.aiWinRate - a.aiWinRate);
 
-      const finalResults = aiScreenerResults.map(ai => {
-        if (!ai.s) return null;
-        const aiSymbol = ai.s.toUpperCase();
-        
-        // Tìm mã khớp (linh hoạt: khớp symbol, khớp ticker, hoặc ticker chứa symbol)
-        const raw = lastScannedData.find(r => {
-          const rSym = (r.symbol || "").toUpperCase();
-          const rTick = (r.ticker || "").toUpperCase();
-          return rSym === aiSymbol || rTick === aiSymbol || rTick.includes(aiSymbol) || aiSymbol.includes(rSym);
-        });
-        
-        if (!raw) {
-          console.warn(`[TPP] Không tìm thấy dữ liệu gốc cho mã AI: ${ai.s}`);
-          return null;
-        }
-        return { 
-          ...raw, 
-          ticker: raw.ticker || raw.symbol || aiSymbol, // Đảm bảo luôn có ticker đầy đủ
-          symbol: raw.symbol || aiSymbol,
-          aiReason: ai.r, 
-          aiScore: ai.sc || 0,
-          aiDuration: ai.d || 0,
-          aiEntry: ai.e || "N/A",
-          aiTarget: ai.t || "N/A",
-          aiStoploss: ai.sl || "N/A",
-          aiWinRate: ai.w || 0
-        };
-      }).filter(r => r !== null);
-
-      console.log("[TPP] Final matched results count:", finalResults.length);
-      addSystemLog('DEBUG', 'Kết quả sau khi khớp', { totalAI: aiScreenerResults.length, matched: finalResults.length });
-
-      // Sắp xếp theo tỉ lệ thắng (Winrate) giảm dần
-      finalResults.sort((a, b) => b.aiWinRate - a.aiWinRate);
-
-      // Lưu kết quả vào storage
-      const timestamp = Date.now();
-      await saveScannerResults(finalResults, timestamp);
-
-      renderScannerResults(finalResults, root, timestamp, "#scanner-ai-results");
+      const ts = Date.now();
+      await saveScannerResults(finalResults, ts);
+      renderScannerResults(finalResults, root, ts, "#scanner-ai-results");
     } catch (err) {
-      aiContainer.innerHTML = `<div class="empty-state">❌ Lỗi phân tích AI: ${err.message}</div>`;
+      aiContainer.innerHTML = `<div class="empty-state">❌ Lỗi AI: ${err.message}</div>`;
     }
   }
 
   async function handleAskAdvisor(symbol) {
-    // 1. Kiểm tra Cache trước
-    const cachedAdvice = await getAdviceCache(symbol);
-    if (cachedAdvice) {
-      console.log("[TPP] Using cached advice for", symbol);
-      showAdviceModal(symbol, cachedAdvice);
-      return;
-    }
+    const cached = await getAdviceCache(symbol);
+    if (cached) return showAdviceModal(symbol, cached);
 
-    // 1. Tìm dữ liệu đầy đủ từ danh sách đã quét
-    let fullData = lastScannedData.find(s => s.ticker === symbol || s.symbol === symbol);
-    
-    // Nếu không tìm thấy trực tiếp, thử đối chiếu mã rút gọn (AI trả về 'TCB' thay vì 'HOSE:TCB')
-    if (!fullData && !symbol.includes(':')) {
-      fullData = lastScannedData.find(s => {
-        const tickerOnly = s.ticker ? s.ticker.split(':')[1] : "";
-        const symbolOnly = s.symbol ? s.symbol.split(':')[1] : "";
-        return tickerOnly === symbol || symbolOnly === symbol;
-      });
-    }
+    let fullData = lastScannedData.find(s => (s.ticker || s.symbol || "").includes(symbol));
+    if (!fullData) return alert(`Không tìm thấy dữ liệu cho mã ${symbol}.`);
 
-    if (!fullData) {
-      alert(`Không tìm thấy dữ liệu gốc cho mã ${symbol}. Vui lòng thử Quét Dữ Liệu lại.`);
-      return;
-    }
-
-    // Cập nhật symbol chuẩn (có sàn) để hiển thị
     const fullSymbol = fullData.ticker || fullData.symbol;
-    showAdviceModal(fullSymbol, `<div class="empty-state">⏳ Đang đối chiếu với hồ sơ nhà đầu tư của bạn...</div>`);
+    showAdviceModal(fullSymbol, `
+      <div class="loading-wrapper">
+        <div class="hourglass"></div>
+        <div class="loading-text">⏳ Đang giải mã hành vi giá...</div>
+      </div>`);
 
     try {
-      const advice = await getDetailedAdvice(fullSymbol, fullData, appSettings);
-      
-      // Lưu vào Cache
+      // Fetch 20 phiên lịch sử (hoặc theo cấu hình settings.lookbackPeriods)
+      const lookback = appSettings.lookbackPeriods || 20;
+      const history = await fetchSymbolHistory(fullSymbol, lookback);
+      const historyText = formatHistoryForAI(history, symbol);
+
+      const advice = await getDetailedAdvice(fullSymbol, fullData, appSettings, historyText);
       await saveAdviceCache(fullSymbol, advice);
-      
       showAdviceModal(fullSymbol, advice);
     } catch (err) {
-      root.querySelector("#modal-body").innerHTML = `<div class="pnl loss">❌ Lỗi AI Advisor: ${err.message}</div>`;
+      root.querySelector("#modal-body").innerHTML = `<div class="pnl loss">❌ Lỗi: ${err.message}</div>`;
     }
   }
 
-  function showAdviceModal(symbol, adviceContent) {
-    root.querySelector("#modal-title").innerHTML = `AI Advisor đang phân tích <strong>${symbol.split(':')[1] || symbol}</strong>...`;
-    
-    // Nếu là text bình thường thì format, nếu là HTML (như loading) thì giữ nguyên
-    if (adviceContent.includes("empty-state")) {
-      root.querySelector("#modal-body").innerHTML = adviceContent;
+  function showAdviceModal(symbol, content) {
+    root.querySelector("#modal-title").innerHTML = `AI Advisor: <strong>${symbol.split(':')[1] || symbol}</strong>`;
+    const body = root.querySelector("#modal-body");
+    if (content.includes("empty-state")) {
+      body.innerHTML = content;
     } else {
-      const escapedAdvice = escapeHTML(adviceContent);
-      const formattedAdvice = escapedAdvice.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>');
-      root.querySelector("#modal-body").innerHTML = `
-        <div style="font-size:13px; line-height:1.6; color:var(--text-primary);">
-          ${formattedAdvice}
-        </div>
-      `;
+      const formatted = escapeHTML(content).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>');
+      body.innerHTML = `<div style="font-size:13px; line-height:1.6;">${formatted}</div>`;
     }
-    root.querySelector("#modal-analysis").style.display = "flex";
+    toggleModal(root, "modal-analysis", true);
   }
 
   function handleViewRaw(symbol, rawData) {
-    root.querySelector("#modal-title").innerHTML = `Dữ liệu gốc (Raw): <strong>${symbol}</strong>`;
-    root.querySelector("#modal-body").innerHTML = `
-      <pre style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; font-size:11px; overflow:auto; max-height:350px;">${JSON.stringify(rawData, null, 2)}</pre>
-    `;
-    root.querySelector("#modal-analysis").style.display = "flex";
+    root.querySelector("#modal-title").innerHTML = `Raw: <strong>${symbol}</strong>`;
+    root.querySelector("#modal-body").innerHTML = `<pre style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; font-size:11px; overflow:auto; max-height:350px;">${JSON.stringify(rawData, null, 2)}</pre>`;
+    toggleModal(root, "modal-analysis", true);
   }
 
   function initExportImport() {
-    const btnExport = root.querySelector("#btn-export");
-    const btnImport = root.querySelector("#btn-import");
+    root.querySelector("#btn-export")?.addEventListener("click", () => {
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(portfolio));
+      const a = document.createElement("a");
+      a.href = dataStr; a.download = `portfolio_${new Date().toISOString().slice(0, 10)}.json`;
+      root.appendChild(a); a.click(); a.remove();
+    });
 
-    if (btnExport) {
-      btnExport.addEventListener("click", () => {
-        const dataStr =
-          "data:text/json;charset=utf-8," +
-          encodeURIComponent(JSON.stringify(portfolio));
-        const anchor = document.createElement("a");
-        anchor.setAttribute("href", dataStr);
-        anchor.setAttribute(
-          "download",
-          `tpp_portfolio_${new Date().toISOString().slice(0, 10)}.json`,
-        );
-        root.appendChild ? root.appendChild(anchor) : document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-      });
-    }
-
-    if (btnImport) {
-      btnImport.addEventListener("click", () => {
-        const input = document.createElement("input");
-        input.type = "file";
-        input.accept = ".json";
-        input.onchange = (e) => {
-          const file = e.target.files[0];
-          if (!file) return;
-          const reader = new FileReader();
-          reader.onload = async (event) => {
-            try {
-              const importedData = JSON.parse(event.target.result);
-              if (Array.isArray(importedData)) {
-                const isValid = importedData.every(t =>
-                  t.symbol && t.type && t.entryPrice && t.quantity
-                );
-
-                if (!isValid) {
-                  alert("Dữ liệu không đúng cấu trúc (Thiếu Mã, Loại lệnh, Giá hoặc Số lượng).");
-                  return;
-                }
-
-                portfolio = importedData;
-                await savePortfolio(portfolio);
-                renderPortfolio(
-                  portfolio,
-                  handleDelete,
-                  handleEdit,
-                  currentPriceMap,
-                  root
-                );
-                updatePricesAndRender();
-                alert("Import successful!");
-              } else {
-                alert("Invalid format: expected JSON array of trades.");
-              }
-            } catch (err) {
-              alert("Error parsing JSON file!");
+    root.querySelector("#btn-import")?.addEventListener("click", () => {
+      const inp = document.createElement("input");
+      inp.type = "file"; inp.accept = ".json";
+      inp.onchange = (e) => {
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+          try {
+            const data = JSON.parse(ev.target.result);
+            if (Array.isArray(data)) {
+              portfolio = data;
+              await savePortfolio(portfolio);
+              updatePricesAndRender();
+              alert("Import thành công!");
             }
-          };
-          reader.readAsText(file);
+          } catch (err) { alert("Lỗi đọc file!"); }
         };
-        input.click();
-      });
-    }
+        reader.readAsText(e.target.files[0]);
+      };
+      inp.click();
+    });
   }
 
   portfolio = await getPortfolio();
@@ -506,37 +370,76 @@ export async function initApp(root) {
     });
   }
 
-  // Nút Xóa Logs
-  const btnClearLogs = root.querySelector('#btn-clear-logs');
-  if (btnClearLogs) {
-    btnClearLogs.addEventListener('click', async () => {
-      if (confirm('Bạn có chắc muốn xóa toàn bộ nhật ký?')) {
-        await chrome.storage.local.remove('tpp_logs');
-        renderSystemLogs([], root);
-      }
+  setupCoreBindings();
+  setupAIBindings();
+  setupScannerBindings();
+  setupManagementBindings();
+
+  updatePricesAndRender();
+  startAutoRefresh();
+
+  // ── INTERNAL BINDING HELPERS ──
+
+  function setupCoreBindings() {
+    bindFormEvents(handleSave, root);
+    bindCloseEvents(handleTakeProfit, root);
+    bindHistoryEvents(handleClearHistory, root);
+    bindT0Events(handleT0, root);
+    bindTabEvents(root);
+    bindSettingsEvents(appSettings, async (s) => { appSettings = s; await saveSettings(s); }, fetchModels, root);
+    initExportImport();
+  }
+
+  function setupAIBindings() {
+    bindChatEvents(async (t) => {
+      chatHistory.push({ role: "user", text: t }); await saveChatHistory(chatHistory);
+      const res = await queryAI(chatHistory, appSettings);
+      chatHistory.push({ role: "assistant", text: res }); await saveChatHistory(chatHistory);
+      return res;
+    }, async () => { chatHistory = []; await saveChatHistory(chatHistory); }, root);
+
+    bindAIEvents((sym, data, type) => {
+      sendToChat(`Trading: Mã ${sym}, Vị thế ${type}. Giá:${data.close}, RSI:${Math.round(data.rsi)}. Có nên vào không? (3 câu)`);
+    }, root);
+
+    bindAIPortfolio(() => {
+      if (portfolio.length === 0) return alert("Danh mục trống.");
+      let ctx = "Danh mục:\nMã | Lệnh | Qty | Entry | PnL%\n";
+      portfolio.forEach((t) => {
+        const pData = currentPriceMap[t.symbol] || { close: t.entryPrice };
+        const pct = (t.type === "BUY" ? (pData.close - t.entryPrice) : (t.entryPrice - pData.close)) / t.entryPrice * 100;
+        ctx += `- ${t.symbol} | ${t.type} | ${t.quantity} | ${t.entryPrice} | ${pct.toFixed(2)}%\n`;
+      });
+      sendToChat(ctx + "\nNhận xét sức khỏe danh mục và lời khuyên ngắn.");
+    }, root);
+
+    bindAIDCA((trade, currentPrice) => {
+      const d = currentPriceMap[trade.symbol] || {};
+      const pct = (trade.type === "BUY" ? (currentPrice - trade.entryPrice) : (trade.entryPrice - currentPrice)) / trade.entryPrice * 100;
+      sendToChat(`DCA ${trade.symbol} (${trade.type}): Lỗ ${pct.toFixed(2)}%. Giá: ${currentPrice}, RSI: ${Math.round(d.rsi)}. Có nên DCA không?`);
+      toggleModal(root, "modal-dca", false);
+    }, root);
+
+    root.querySelector('#btn-clear-cache')?.addEventListener('click', async () => {
+      if (confirm('Xóa bộ nhớ đệm AI?')) { await clearAdviceCache(); alert('Đã xóa cache!'); }
     });
   }
 
-  // Nút Xóa dữ liệu Scanner (Cả 2)
-  const btnClearScanner = root.querySelector('#btn-clear-scanner');
-  if (btnClearScanner) {
-    btnClearScanner.addEventListener('click', async () => {
-      if (confirm('Xóa toàn bộ kết quả quét và phân tích AI hiện tại?')) {
+  function setupScannerBindings() {
+    bindScannerEvents(handleScanMarket, handleAIAnalyze, handleAskAdvisor, handleViewRaw, root);
+    root.querySelector('#btn-clear-scanner')?.addEventListener('click', async () => {
+      if (confirm('Xóa kết quả quét?')) {
         await clearAllScannerData();
-        root.querySelector("#scanner-raw-results").innerHTML = `<div class="empty-state">Bấm "1. Quét Dữ Liệu" để lấy thông tin mới nhất.</div>`;
+        root.querySelector("#scanner-raw-results").innerHTML = `<div class="empty-state">Bấm "1. Quét Dữ Liệu" để bắt đầu.</div>`;
         root.querySelector("#scanner-ai-results").innerHTML = "";
         root.querySelector("#ai-top-picks").style.display = "none";
         root.querySelector("#btn-ai-analyze").style.display = "none";
         lastScannedData = [];
       }
     });
-  }
 
-  // Nút Xóa riêng danh sách AI
-  const btnClearAI = root.querySelector('#btn-clear-ai');
-  if (btnClearAI) {
-    btnClearAI.addEventListener('click', async () => {
-      if (confirm('Xóa danh sách gợi ý của AI?')) {
+    root.querySelector('#btn-clear-ai')?.addEventListener('click', async () => {
+      if (confirm('Xóa gợi ý AI?')) {
         await chrome.storage.local.remove(["tpp_scanner_results", "tpp_scanner_time"]);
         root.querySelector("#scanner-ai-results").innerHTML = "";
         root.querySelector("#ai-top-picks").style.display = "none";
@@ -544,112 +447,12 @@ export async function initApp(root) {
     });
   }
 
-  // Nút Xóa Cache AI
-  const btnClearCache = root.querySelector('#btn-clear-cache');
-  if (btnClearCache) {
-    btnClearCache.addEventListener('click', async () => {
-      if (confirm('Bạn có chắc muốn xóa bộ nhớ đệm lời khuyên AI? (Tiết kiệm Token nhưng sẽ phải quét lại mã)')) {
-        await clearAdviceCache();
-        alert('Đã xóa cache thành công!');
-      }
+  function setupManagementBindings() {
+    root.querySelector('.tab-btn[data-target="section-logs"]')?.addEventListener('click', async () => {
+      renderSystemLogs(await getSystemLogs(), root);
+    });
+    root.querySelector('#btn-clear-logs')?.addEventListener('click', async () => {
+      if (confirm('Xóa nhật ký?')) { await chrome.storage.local.remove('tpp_logs'); renderSystemLogs([], root); }
     });
   }
-
-  bindSettingsEvents(
-    appSettings,
-    async (newSettings) => {
-      appSettings = newSettings;
-      await saveSettings(newSettings);
-    },
-    fetchModels,
-    root
-  );
-
-  bindAIEvents((sym, data, tradeType) => {
-    const prompt = `Bạn là chuyên gia giao dịch chứng khoán/crypto phái sinh nhạy bén.\nMã: ${sym}\nVị thế định mua: ${tradeType.toUpperCase()}\nDữ liệu On-chain/Kỹ thuật lúc này:\n- Giá Close: ${data.close}\n- EMA 200: ${data.ema200 ? data.ema200 : "N/A"}\n- RSI 14: ${data.rsi ? Math.round(data.rsi) : "N/A"}\n- BB Lower: ${data.bb_lower || "N/A"} | BB Upper: ${data.bb_upper || "N/A"}\n- Khối lượng: ${data.vol}\n- ATR: ${data.atr}\nDựa vào dữ liệu, đánh giá cực kỳ ngắn gọn (3-4 câu) xem có nên xuống lệnh ${tradeType} chỗ này không?`;
-    sendToChat(prompt);
-  }, root);
-
-  bindAIPortfolio(() => {
-    if (portfolio.length === 0) {
-      alert("Danh mục trống, không có dữ liệu để phân tích.");
-      return;
-    }
-    let ctx = "Đây là danh mục đầu tư hiện hành của tôi:\nMã | Lệnh | Số lượng | Giá Vốn | Trạng thái PnL%\n";
-    portfolio.forEach((t) => {
-      const pData = currentPriceMap[t.symbol] || { close: t.entryPrice };
-      const cPrice = pData.close;
-      const isBuy = t.type === "BUY";
-      const pct = isBuy ? ((cPrice - t.entryPrice) / t.entryPrice) * 100 : ((t.entryPrice - cPrice) / t.entryPrice) * 100;
-      ctx += `- ${t.symbol} | ${t.type} | ${t.quantity} | Entry: ${t.entryPrice} | Lãi/Lỗ: ${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%\n`;
-    });
-    ctx += "\nHãy đóng vai trò Giám đốc Quản trị Rủi ro. Nhìn vào danh mục trên, đưa ra nhận định THẬT NGẮN GỌN về sức khỏe danh mục và lời khuyên cắt lỗ/gồng lãi phù hợp.";
-    sendToChat(ctx);
-  }, root);
-
-  bindAIDCA((trade, currentPrice) => {
-    const d = currentPriceMap[trade.symbol] || {};
-
-    const pnlPct = trade.type === "BUY"
-      ? ((currentPrice - trade.entryPrice) / trade.entryPrice) * 100
-      : ((trade.entryPrice - currentPrice) / trade.entryPrice) * 100;
-
-    const prompt = `
-Tôi đang giữ lệnh ${trade.symbol} (${trade.type}).
-
-Thông tin hiện tại:
-- Entry: ${trade.entryPrice}
-- Giá hiện tại: ${currentPrice}
-- PnL: ${pnlPct.toFixed(2)}%
-
-Chỉ báo kỹ thuật:
-- RSI: ${d.rsi || "N/A"}
-- EMA20: ${d.ema20 || "N/A"}
-- EMA50: ${d.ema50 || "N/A"}
-- EMA200: ${d.ema200 || "N/A"}
-- MACD: ${d.macd || "N/A"} | Signal: ${d.macd_signal || "N/A"}
-- Bollinger: Lower=${d.bb_lower || "N/A"} | Upper=${d.bb_upper || "N/A"}
-- ATR: ${d.atr || "N/A"}
-- High/Low gần nhất: ${d.high || "N/A"} / ${d.low || "N/A"}
-- Volume: ${d.vol || "N/A"} (so với trung bình: ${d.vol_avg || "N/A"}x)
-
-Yêu cầu:
-1. Đánh giá xu hướng hiện tại (tăng / giảm / sideway).
-2. Quyết định rõ: BÁN / GIỮ / MUA THÊM.
-3. Nếu MUA THÊM (DCA):
-   - Đề xuất tối đa 2 vùng giá (dựa trên BB + ATR + EMA)
-   - Phân bổ vốn (% mỗi lệnh)
-4. Nếu BÁN:
-   - Nêu rõ nên cắt lỗ ngay hay chờ hồi (dựa trên tín hiệu kỹ thuật)
-5. Kế hoạch 3–5 phiên tới (kịch bản chính + kịch bản xấu)
-
-Trả lời tối đa 5 câu, ngắn gọn, tập trung vào hành động, không giải thích dài dòng.
-`;
-
-    sendToChat(prompt);
-
-    const dcaModal = root.querySelector("#modal-dca");
-    if (dcaModal) dcaModal.style.display = "none";
-  }, root);
-
-  bindChatEvents(
-    async (text) => {
-      chatHistory.push({ role: "user", text: text });
-      await saveChatHistory(chatHistory);
-      const responseText = await queryAI(chatHistory, appSettings);
-      chatHistory.push({ role: "assistant", text: responseText });
-      await saveChatHistory(chatHistory);
-      return responseText;
-    },
-    async () => {
-      chatHistory = [];
-      await saveChatHistory(chatHistory);
-    },
-    root
-  );
-
-  initExportImport();
-  renderPortfolio(portfolio, handleDelete, handleEdit, currentPriceMap, root);
-  updatePricesAndRender();
-  startAutoRefresh();
 }

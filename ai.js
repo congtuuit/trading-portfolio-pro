@@ -62,35 +62,23 @@ export async function screenPotentialStocks(rawStocks, targetProfit, settings) {
     const prompt = `Dữ liệu cổ phiếu (JSON):
 ${cleanedData}
 
-Dữ liệu phải dựa trên:
-- Xu hướng timeframe D1
-- Volume trung bình >= 1 triệu cổ/phiên
-- Ưu tiên cổ phiếu có dòng tiền mạnh, tăng thanh khoản đột biến
-- Loại bỏ cổ phiếu thanh khoản thấp, bị thao túng, hoặc sideway yếu
+Nhiệm vụ: Tìm ra Top 10 cổ phiếu có thiết lập Swing Trade (lướt sóng) đẹp nhất dựa trên Price Action.
 
-Chiến lược:
-- Ưu tiên cổ phiếu breakout khỏi nền tích lũy hoặc kháng cự gần
-- Có volume spike xác nhận
-- Xu hướng tăng (MA20 > MA50 hoặc giá nằm trên MA20)
-- Momentum tốt
+Tiêu chí lọc:
+1. Xu hướng: Chỉ chọn cổ phiếu có xu hướng Tăng hoặc Đang tích lũy nền chặt chẽ trên D1.
+2. Price Action & Patterns:
+   - Ưu tiên: Mẫu hình Cốc tay cầm, VCP, Nền giá phẳng (Flat Base), hoặc Breakout kháng cự với Vol lớn.
+   - Nến: Tìm kiếm các dấu hiệu đảo chiều/tiếp diễn như Pinbar, Engulfing tại các vùng hỗ trợ mạnh.
+3. Thanh khoản: Volume trung bình 10 phiên >= 1 triệu cổ (để đảm bảo thoát hàng dễ).
+4. Sức mạnh giá (Relative Strength): Cổ phiếu giữ giá tốt hơn thị trường chung khi thị trường chỉnh.
 
-Mục tiêu:
-- Lướt sóng trong 3–5 phiên
-- Target lợi nhuận ~${targetProfit}% nhưng phải thực tế theo vùng kháng cự gần nhất
+Mục tiêu & Quản trị rủi ro:
+- Lướt sóng T+3 đến T+10.
+- Target lợi nhuận: Kỳ vọng thực tế theo các mốc kháng cự.
+- Tỷ lệ Risk/Reward: Bắt buộc >= 1:2.
 
-Bắt buộc:
-- Có giá vào hợp lý (gần breakout hoặc retest)
-- Có stop loss rõ ràng (rủi ro < 3-5%)
-- Risk/Reward >= 1.5
-
-Đánh giá:
-- Điểm (0-10): dựa trên sức mạnh breakout + volume + xu hướng
-- Win (%): xác suất đạt target dựa trên cấu trúc giá và dòng tiền
-
-Yêu cầu trả về:
-Mỗi dòng một mã theo format:
-
-Mã: [Ticker] | Lý do: [Breakout + dòng tiền ngắn gọn] | Điểm: [0-10] | Phiên: [3-5] | Vào: [Giá vào] | Mục tiêu: [Giá mục tiêu] | Cắt lỗ: [Giá stoploss] | Win: [0-100]
+Yêu cầu trả về (Mỗi dòng một mã, format chuẩn):
+Mã: [Ticker] | Lý do: [Mẫu hình Price Action + Dòng tiền] | Điểm: [0-10] | Phiên: [3-10] | Vào: [Giá entry] | Mục tiêu: [Giá target] | Cắt lỗ: [Giá SL] | Win: [0-100]
 
 Chỉ trả về danh sách, không giải thích thêm.`;
 
@@ -239,38 +227,47 @@ function fixTruncatedJson(str) {
  * PHASE 03: PROFESSIONAL AI ADVISOR
  * Phân tích chi tiết một mã cụ thể theo yêu cầu của User.
  */
-export async function getDetailedAdvice(symbol, fullData, settings) {
+/**
+ * PHASE 03: PROFESSIONAL AI ADVISOR (Enhanced with Price Action)
+ * Phân tích chi tiết một mã cụ thể theo yêu cầu của User.
+ * @param {string} symbol
+ * @param {object} fullData - Dữ liệu snapshot hiện tại
+ * @param {object} settings
+ * @param {string} historyText - Dữ liệu lịch sử đã được format (từ history.js)
+ */
+export async function getDetailedAdvice(symbol, fullData, settings, historyText = "") {
   const profile = {
     trading_style: settings.tradingStyle || "lướt sóng",
     risk_level: settings.riskLevel || "trung bình"
   };
 
-  const prompt = `Bạn là một AI advisor chuyên tư vấn giao dịch cổ phiếu Việt Nam.
+  const prompt = `Bạn là một AI advisor chuyên tư vấn giao dịch cổ phiếu Việt Nam (Swing Trading).
 
 Hồ sơ nhà đầu tư:
 - Phong cách: ${profile.trading_style}
 - Khẩu vị rủi ro: ${profile.risk_level}
 
-Dữ liệu cổ phiếu:
+Dữ liệu kĩ thuật hiện tại (Snapshot):
 ${JSON.stringify(fullData)}
+${historyText ? `\nDữ liệu lịch sử OHLCV:\n${historyText}` : ""}
 
 Nhiệm vụ:
-1. Đánh giá cổ phiếu có phù hợp với nhà đầu tư này không
-2. Nếu KHÔNG phù hợp → giải thích vì sao
-3. Nếu PHÙ HỢP → đưa kế hoạch giao dịch cụ thể
+1. Phân tích Xu hướng & Price Action: Nhận diện mẫu hình nến, vùng S/R (kháng cự/hỗ trợ) và xu hướng ngắn hạn.
+2. Đánh giá tính phù hợp với nhà đầu tư.
+3. Đưa ra kế hoạch giao dịch dựa trên tỷ lệ Risk/Reward (R:R) tối ưu.
 
 Phân tích theo cấu trúc:
-[1] Tóm tắt & Điểm an toàn (Scale từ 1 đến 10 cho đầu tư ngắn hạn)
-[2] Dự báo thời hạn (Vị thế còn an toàn trong bao nhiêu phiên tới?)
-[3] Đánh giá Win Rate (%)
+[1] Tóm tắt & Điểm an toàn (Scale từ 1 đến 10)
+[2] Phân tích Price Action: (Ví dụ: Xuất hiện nến Pinbar retest MA20, Mẫu hình Cốc tay cầm đang hình thành, v.v.)
+[3] Đánh giá Win Rate (%) và R:R Ratio (Kỳ vọng ít nhất 1:2)
 [4] Phù hợp với user? (Có/Không + Lý do)
-[5] Kế hoạch hành động chi tiết:
+[5] Chiến thuật cụ thể:
     - Giá vào (Entry)
     - Chốt lời (Target)
     - Cắt lỗ (Stoploss)
-[6] Mức độ tự tin và rủi ro chính.
+[6] Cảnh báo rủi ro chính.
 
-Nguyên tắc: Không nói lý thuyết chung chung, gắn với dữ liệu, tránh FOMO.`;
+Nguyên tắc: Không nói lý thuyết, tập trung vào hành vi giá thực tế từ dữ liệu.`;
 
   return await queryAI(prompt, settings);
 }

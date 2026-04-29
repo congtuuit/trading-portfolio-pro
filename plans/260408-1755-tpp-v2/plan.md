@@ -21,6 +21,26 @@ Nâng cấp ứng dụng Trading Portfolio Pro lên phiên bản v2.0 với các
 | 04 | 📊 Dashboard & UI Polish | ⬜ Pending | 0% |
 | 05 | ✅ Integration & Final Testing | ⬜ Pending | 0% |
 
+## 🆙 Swing Trading Intelligence Upgrade (v2.1)
+
+| Phase | Name | Status | Progress |
+|-------|------|--------|----------|
+| S1 | 📦 Data & Settings Foundation | ✅ Complete | 100% |
+| S2 | 🧠 AI Price Action Prompt | ✅ Complete | 100% |
+| S3 | ⚖️ Risk & Reward Engine | 🟡 In Progress | 0% |
+| S4 | 📈 Multi-timeframe & Mini Chart | ⬜ Pending | 0% |
+
+### S1 - Checklist:
+- [x] Tạo `history.js` (module độc lập, fetch OHLCV lịch sử)
+- [x] `background.js`: Thêm handler `FETCH_HISTORY`
+- [x] `storage.js`: Thêm default `lookbackPeriods: 20`
+- [x] `popup.html`: Thêm Slider cấu hình (10-200 phiên)
+
+### S2 - Checklist:
+- [x] Nâng cấp `ai.js` hỗ trợ tham số `historyText`
+- [x] Thiết kế Prompt chuyên sâu về Price Action & Patterns
+- [x] Tích hợp luồng fetch history vào `handleAskAdvisor` trong `app.js`
+
 ## Quick Commands
 - Start Phase 1: `/code phase-01`
 - Check progress: `/next`
