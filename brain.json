@@ -1,0 +1,107 @@
+{
+  "meta": { "schema_version": "1.2.0", "awf_version": "4.0.2" },
+  "project": { 
+    "name": "Trading Portfolio Pro", 
+    "type": "Chrome Extension (MV3)", 
+    "status": "Active Development" 
+  },
+  "tech_stack": { 
+    "frontend": {
+      "ui": "Vanilla HTML/CSS/JS (Theme-aware)",
+      "modules": "ES Modules system",
+      "injection": "Shadow DOM for styling isolation",
+      "typography": "Outfit (Primary), Inter (Fallback)"
+    }, 
+    "backend": {
+      "service_worker": "Chrome Background Script",
+      "storage": "chrome.storage.local",
+      "cors_proxy": "Background message passing"
+    }, 
+    "database": {
+      "type": "Local Storage DB",
+      "format": "JSON structure for portfolio and settings"
+    } 
+  },
+  "database_schema": { 
+    "tables": [
+      {
+        "name": "tpp_portfolio",
+        "columns": ["id", "symbol", "type", "entryPrice", "quantity", "stopLoss", "takeProfit", "note"]
+      },
+      {
+        "name": "tpp_settings",
+        "columns": ["aiProvider", "aiModel", "apiKey", "tgToken", "tgChatId", "tgEnabled", "lookbackPeriods", "theme"]
+      },
+      {
+        "name": "tpp_chat_history",
+        "columns": ["role", "text"]
+      }
+    ], 
+    "relationships": [] 
+  },
+  "api_endpoints": [
+    {
+      "provider": "TradingView Scanner",
+      "path": "https://scanner.tradingview.com/global/scan",
+      "method": "POST",
+      "purpose": "Fetch real-time stock prices and indicators (RSI, BB, EMA200)."
+    },
+    {
+      "provider": "TradingView History",
+      "path": "https://history.tradingview.com/history",
+      "method": "GET",
+      "purpose": "Fetch OHLCV historical data (Candlesticks) for Price Action analysis."
+    },
+    {
+      "provider": "Google Gemini",
+      "path": "https://generativelanguage.googleapis.com/v1beta/models/*",
+      "method": "POST",
+      "purpose": "AI Chat and DCA analysis"
+    },
+    {
+      "provider": "OpenAI",
+      "path": "https://api.openai.com/v1/chat/completions",
+      "method": "POST",
+      "purpose": "AI Chat and DCA analysis (Alternative)"
+    },
+    {
+      "provider": "Telegram",
+      "path": "https://api.telegram.org/bot<token>/sendMessage",
+      "method": "POST",
+      "purpose": "Push proactive alerts to user's phone"
+    }
+  ],
+  "business_rules": [
+    "Prices are stored as Full Prices (e.g. 11500) but displayed as Divided Prices (/1000 = 11.5) for VN market.",
+    "Proactive alerts check every 10 minutes (via alarms).",
+    "T0 rule: Mini-trade profits are deducted from original entry price.",
+    "Swing trading recommendations must have a minimum Risk/Reward ratio of 1:2.",
+    "Theme persists across sessions via chrome.storage.local.theme."
+  ],
+  "features": [
+    "Portfolio Management (CRUD)",
+    "Real-time PnL Tracking",
+    "Floating AI Widget across all websites",
+    "DCA & T0 Scenarios Calculation",
+    "Telegram Alerts (Stop Loss, Take Profit, RSI Oversold)",
+    "Stock Scanner & AI Swing Recommendation (Historical Data Analysis)",
+    "Multi-Theme Support: Default, Cyber Pulse (Neon), Crystal Glass (Glassmorphism)"
+  ],
+  "knowledge_items": { 
+    "patterns": [
+      "ES Modules in content script using dynamic import loader (content-loader.js).",
+      "Shadow DOM used for floating widget to encapsulate CSS.",
+      "Event Delegation in ui.js to manage large lists efficiently.",
+      "Theme Engine using CSS Variables and body.theme-* class selectors."
+    ], 
+    "gotchas": [
+      "Cannot use fetch() to TradingView directly in content.js due to CORS restrictions. Must proxy via background.js using chrome.runtime.sendMessage.",
+      "Download anchors must be appended to document.body (not ShadowRoot) to trigger download behavior in all browsers."
+    ], 
+    "conventions": [
+      "Use getDivisor() to dynamically adjust price displays without mutating underlying storage.",
+      "Minimize impact on stable modules by extending instead of modifying.",
+      "Export all reusable UI helpers (toggleModal, bindModalClose) to maintain module consistency."
+    ] 
+  }
+}
