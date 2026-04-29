@@ -547,6 +547,10 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
         sliderEl.oninput = () => { if (displayEl) displayEl.textContent = `${sliderEl.value} phiên`; };
       }
 
+      // Load Theme selection
+      const themeEl = root.querySelector("#inp-theme");
+      if (themeEl) themeEl.value = settings.theme || "default";
+
       const msgEl = root.querySelector("#msg-api-key");
       if (msgEl) msgEl.innerHTML = `Lấy Key tại: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent-blue);">Google AI Studio</a> hoặc <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent-blue);">OpenAI</a>`;
       toggleModal(root, "modal-settings", true);
@@ -644,6 +648,10 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
       // Save Lookback Periods
       const sliderEl = root.querySelector("#inp-lookback");
       if (sliderEl) settings.lookbackPeriods = parseInt(sliderEl.value) || 20;
+
+      // Save Theme settings
+      const themeEl = root.querySelector("#inp-theme");
+      if (themeEl) settings.theme = themeEl.value;
 
       await onSaveSettings(settings);
       modalSettings.style.display = "none";

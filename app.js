@@ -336,6 +336,7 @@ export async function initApp(root) {
 
   portfolio = await getPortfolio();
   appSettings = await getSettings();
+  applyTheme(appSettings.theme);
   chatHistory = await getChatHistory();
   tradeHistory = await getTradeHistory();
   const scannerCache = await getScannerResults();
@@ -389,8 +390,18 @@ export async function initApp(root) {
     bindHistoryEvents(handleClearHistory, root);
     bindT0Events(handleT0, root);
     bindTabEvents(root);
-    bindSettingsEvents(appSettings, async (s) => { appSettings = s; await saveSettings(s); }, fetchModels, root);
+    bindSettingsEvents(appSettings, async (s) => { 
+      appSettings = s; 
+      await saveSettings(s); 
+      applyTheme(s.theme);
+    }, fetchModels, root);
     initExportImport();
+  }
+
+  function applyTheme(theme) {
+    const body = document.body;
+    body.classList.remove('theme-default', 'theme-cyber', 'theme-glass');
+    body.classList.add(`theme-${theme || 'default'}`);
   }
 
   function setupAIBindings() {

@@ -40,7 +40,8 @@ export async function getSettings() {
         tgToken: '',
         tgChatId: '',
         tgEnabled: false,
-        lookbackPeriods: 20
+        lookbackPeriods: 20,
+        theme: 'default'
       });
     });
   });
