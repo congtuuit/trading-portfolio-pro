@@ -8,12 +8,11 @@ import {
   getSettings, 
   addSystemLog 
 } from "./storage.js";
-import { fetchPricesMap } from "./price.js";
+import { fetchPricesMap, fetchDeepResearchData } from "./price.js";
 import { getDivisor } from "./utils.js";
 import { sendTelegramMessage } from "./telegram.js";
 import { suggestEntryExit } from "./analysis.js";
 import { scanVietnamStocks } from "./scanner_data.js";
-import { fetchHistoryDirect } from "./history.js";
 
 const MONITOR_ALARM = "tpp_monitor_alarm";
 const MONITOR_INTERVAL_MINS = 10;
@@ -120,6 +119,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         });
       return true;
 
+    case "FETCH_DEEP_RESEARCH":
+      addSystemLog('API', 'FETCH_DEEP_RESEARCH Request', message.symbol);
+      fetchDeepResearchData(message.symbol)
+        .then(data => {
+          addSystemLog('API', 'FETCH_DEEP_RESEARCH Response', data);
+          sendResponse({ success: true, data });
+        })
+        .catch(err => {
+          addSystemLog('ERROR', 'FETCH_DEEP_RESEARCH Failed', err.message);
+          sendResponse({ success: false, error: err.message });
+        });
+      return true;
+
     case "SCAN_STOCKS":
       console.log("[TPP] Starting scanVietnamStocks...");
       addSystemLog('API', 'SCAN_STOCKS Request', 'Scanning Vietnam market...');
@@ -140,18 +152,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         addSystemLog('ERROR', 'SCAN_STOCKS Failed (Sync)', err.message);
         sendResponse({ success: false, error: err.message });
       }
-      return true;
-
-    case "FETCH_HISTORY":
-      addSystemLog('API', 'FETCH_HISTORY Request', { symbol: message.symbol, periods: message.periods });
-      fetchHistoryDirect(message.symbol, message.periods || 20, message.resolution || 'D')
-        .then(data => {
-          sendResponse({ success: true, data });
-        })
-        .catch(err => {
-          addSystemLog('ERROR', 'FETCH_HISTORY Failed', err.message);
-          sendResponse({ success: false, error: err.message });
-        });
       return true;
 
     default:

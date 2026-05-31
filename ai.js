@@ -135,9 +135,17 @@ function safeParseJSON(text) {
     cleaned = cleaned.replace(/```json|```/g, '').trim();
   }
 
-  // 2. Tìm mảng JSON [ ... ]
-  const startIdx = cleaned.indexOf('[');
-  const endIdx = cleaned.lastIndexOf(']');
+  // 2. Tìm mảng JSON [ ... ] hoặc object { ... }
+  let startIdx = cleaned.indexOf('[');
+  let endIdx = cleaned.lastIndexOf(']');
+  
+  const objStartIdx = cleaned.indexOf('{');
+  const objEndIdx = cleaned.lastIndexOf('}');
+  
+  if (objStartIdx !== -1 && (startIdx === -1 || objStartIdx < startIdx)) {
+    startIdx = objStartIdx;
+    endIdx = objEndIdx;
+  }
 
   let jsonPart = cleaned;
   if (startIdx !== -1) {
@@ -227,6 +235,48 @@ function fixTruncatedJson(str) {
  * PHASE 03: PROFESSIONAL AI ADVISOR
  * Phân tích chi tiết một mã cụ thể theo yêu cầu của User.
  */
+/**
+ * PHASE 04: DEEP RESEARCH AI
+ * Phân tích chuyên sâu kết hợp Cơ bản và Kỹ thuật.
+ */
+export async function analyzeDeepStock(symbol, contextData, settings) {
+  const prompt = `Bạn là Giám đốc Phân tích Đầu tư. Dưới đây là dữ liệu toàn diện về cổ phiếu ${symbol} (Thị trường VN):
+
+${JSON.stringify(contextData)}
+
+Nhiệm vụ:
+1. Đánh giá sức khỏe tài chính (Cơ bản) thông qua các chỉ số PE, PB, ROE, Lợi nhuận (revenue, debt_equity).
+2. Nhận định xu hướng giá, ngưỡng hỗ trợ/kháng cự từ dữ liệu kỹ thuật.
+3. Tổng hợp SWOT (Điểm mạnh, Điểm yếu, Cơ hội, Thách thức) từ cả 2 góc độ Cơ bản và Kỹ thuật.
+4. Đưa ra Khuyến nghị (MUA/BÁN/NẮM GIỮ).
+
+YÊU CẦU BẮT BUỘC: Bạn PHẢI trả về ĐÚNG ĐỊNH DẠNG JSON như sau (không chứa các khối markdown):
+{
+  "symbol": "${symbol}",
+  "score": 8,
+  "summary": "Tóm tắt 1-2 câu",
+  "technical": "Nhận định phân tích kỹ thuật",
+  "fundamental": "Nhận định cơ bản",
+  "swot": {
+    "strengths": ["..."],
+    "weaknesses": ["..."],
+    "opportunities": ["..."],
+    "threats": ["..."]
+  },
+  "action": "MUA",
+  "trading_plan": {
+    "entry": "Vùng giá mua/bán (VD: 70000 - 71000)",
+    "target": "Vùng chốt lời (VD: 78000)",
+    "stoploss": "Vùng cắt lỗ (VD: 68000)"
+  }
+}`;
+
+  const systemPrompt = "Bạn là Giám đốc Phân tích Đầu tư. Chỉ trả về đúng dữ liệu định dạng JSON thuần túy, không giải thích.";
+  const response = await queryAIWithSystem(prompt, systemPrompt, settings);
+  
+  return safeParseJSON(response);
+}
+
 /**
  * PHASE 03: PROFESSIONAL AI ADVISOR (Enhanced with Price Action)
  * Phân tích chi tiết một mã cụ thể theo yêu cầu của User.

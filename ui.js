@@ -351,8 +351,9 @@ export function renderScannerResults(results, root = document, timestamp = null,
           <div style="font-size:10px;">⏳ Giữ: <strong style="color:var(--warning, #f1c40f);">${res.aiDuration || 0} phiên</strong></div>
           <div style="font-size:10px;">🎯 Target: <strong style="color:var(--profit);">${res.aiTarget || 'N/A'}</strong></div>
           <div style="font-size:10px;">🛡️ Cắt lỗ: <strong style="color:var(--loss);">${res.aiStoploss || 'N/A'}</strong></div>
-          <div style="font-size:10px; grid-column: span 2; border-top: 1px solid rgba(255,255,255,0.05); padding-top:4px; margin-top:2px;">
-            🔥 Xác suất thắng: <strong style="color:#00e676;">${res.aiWinRate || 0}%</strong>
+          <div style="font-size:10px; grid-column: span 2; border-top: 1px solid rgba(255,255,255,0.05); padding-top:4px; margin-top:2px; display:flex; justify-content:space-between; align-items:center;">
+            <span>🔥 Xác suất thắng: <strong style="color:#00e676;">${res.aiWinRate || 0}%</strong></span>
+            ${res.aiRR ? `<span style="background:${res.aiRR >= 2 ? 'var(--profit)' : (res.aiRR >= 1.5 ? 'var(--warning, #f1c40f)' : 'var(--loss)')}; color:white; padding:2px 6px; border-radius:4px; font-weight:bold;">R:R = 1:${res.aiRR}</span>` : ''}
           </div>
         </div>
       </div>
@@ -1348,4 +1349,101 @@ export function renderHistory(history, root = document) {
   `;
 
   container.innerHTML = htmlBytes.join("");
+}
+
+export function bindDeepResearchEvents(onResearch, root = document) {
+  const btn = root.querySelector("#btn-deep-research");
+  const inp = root.querySelector("#inp-deep-symbol");
+  
+  if (btn && inp) {
+    btn.addEventListener("click", async () => {
+      const symbol = inp.value.trim().toUpperCase();
+      if (!symbol) return;
+      btn.disabled = true;
+      btn.textContent = "Đang Phân Tích...";
+      try {
+        await onResearch(symbol);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Phân Tích";
+      }
+    });
+    
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") btn.click();
+    });
+  }
+}
+
+export function renderDeepResearch(data, root = document) {
+  const container = root.querySelector("#deep-research-content");
+  if (!container) return;
+
+  if (!data || data.error) {
+    container.innerHTML = `<div class="empty-state" style="color:var(--loss);">❌ Lỗi: ${data?.error || "Không thể phân tích mã này."}</div>`;
+    return;
+  }
+
+  const badgeColor = data.score >= 7 ? "var(--profit)" : data.score >= 5 ? "var(--warning, #f1c40f)" : "var(--loss)";
+  const renderList = (arr) => {
+    if (!arr || !arr.length) return "<li>Không có dữ liệu</li>";
+    return arr.map(item => `<li>${item}</li>`).join("");
+  };
+
+  container.innerHTML = `
+    <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:12px;">
+        <h2 style="margin:0; font-size:18px; color:var(--text-primary);">${data.symbol} <span style="background:${badgeColor}; color:white; font-size:12px; padding:2px 8px; border-radius:12px; vertical-align:middle; margin-left:8px;">Score: ${data.score}/10</span></h2>
+        <span style="font-weight:bold; color:${data.action === 'MUA' ? 'var(--profit)' : data.action === 'BÁN' ? 'var(--loss)' : 'var(--warning, #f1c40f)'}; font-size:14px; border:1px solid currentColor; padding:4px 12px; border-radius:4px;">${data.action}</span>
+      </div>
+      
+      <p style="font-size:13px; line-height:1.5; color:var(--text-primary); margin-bottom:16px;"><strong>Tóm tắt:</strong> ${data.summary}</p>
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+        <div style="background:rgba(0,0,0,0.1); padding:12px; border-radius:6px; border:1px solid rgba(255,255,255,0.05);">
+          <h3 style="margin-top:0; font-size:13px; color:var(--accent-blue);">📊 Phân tích Kỹ thuật</h3>
+          <p style="font-size:12px; line-height:1.4; color:var(--text-muted);">${data.technical}</p>
+        </div>
+        <div style="background:rgba(0,0,0,0.1); padding:12px; border-radius:6px; border:1px solid rgba(255,255,255,0.05);">
+          <h3 style="margin-top:0; font-size:13px; color:var(--profit);">🏦 Phân tích Cơ bản</h3>
+          <p style="font-size:12px; line-height:1.4; color:var(--text-muted);">${data.fundamental}</p>
+        </div>
+      </div>
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; font-size:12px; background:rgba(255,255,255,0.02); padding:12px; border-radius:6px;">
+        <div>
+          <h4 style="color:var(--profit); margin-bottom:4px; margin-top:0;">💪 Điểm mạnh (Strengths)</h4>
+          <ul style="color:var(--text-muted); padding-left:16px; margin-top:0;">${renderList(data.swot?.strengths)}</ul>
+          <h4 style="color:var(--accent-blue); margin-bottom:4px; margin-top:12px;">🌟 Cơ hội (Opportunities)</h4>
+          <ul style="color:var(--text-muted); padding-left:16px; margin-top:0;">${renderList(data.swot?.opportunities)}</ul>
+        </div>
+        <div>
+          <h4 style="color:var(--loss); margin-bottom:4px; margin-top:0;">📉 Điểm yếu (Weaknesses)</h4>
+          <ul style="color:var(--text-muted); padding-left:16px; margin-top:0;">${renderList(data.swot?.weaknesses)}</ul>
+          <h4 style="color:var(--warning, #f1c40f); margin-bottom:4px; margin-top:12px;">⚠️ Rủi ro (Threats)</h4>
+          <ul style="color:var(--text-muted); padding-left:16px; margin-top:0;">${renderList(data.swot?.threats)}</ul>
+        </div>
+      </div>
+      
+      ${data.trading_plan ? `
+      <div style="margin-top:16px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.1); padding:12px; border-radius:6px;">
+        <h3 style="margin:0 0 12px 0; font-size:14px; color:var(--text-primary);">🎯 Kế hoạch Giao dịch</h3>
+        <div style="display:flex; justify-content:space-between; text-align:center; gap:8px;">
+          <div style="flex:1; background:rgba(255,255,255,0.05); padding:8px; border-radius:4px; border-left:3px solid var(--accent-blue);">
+            <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">Giá Vào (Entry)</div>
+            <div style="font-size:13px; font-weight:bold; color:var(--text-primary);">${data.trading_plan.entry || "-"}</div>
+          </div>
+          <div style="flex:1; background:rgba(255,255,255,0.05); padding:8px; border-radius:4px; border-left:3px solid var(--profit);">
+            <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">Mục Tiêu (Target)</div>
+            <div style="font-size:13px; font-weight:bold; color:var(--profit);">${data.trading_plan.target || "-"}</div>
+          </div>
+          <div style="flex:1; background:rgba(255,255,255,0.05); padding:8px; border-radius:4px; border-left:3px solid var(--loss);">
+            <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">Cắt Lỗ (Stoploss)</div>
+            <div style="font-size:13px; font-weight:bold; color:var(--loss);">${data.trading_plan.stoploss || "-"}</div>
+          </div>
+        </div>
+      </div>
+      ` : ""}
+    </div>
+  `;
 }

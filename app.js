@@ -23,7 +23,7 @@ import {
   getSystemLogs,
   addSystemLog
 } from "./storage.js";
-import { getDivisor, escapeHTML } from "./utils.js";
+import { getDivisor, escapeHTML, calculateRR } from "./utils.js";
 import {
   renderPortfolio,
   bindFormEvents,
@@ -46,12 +46,13 @@ import {
   bindScannerEvents,
   renderScannerResults,
   renderSystemLogs,
-  toggleModal
+  toggleModal,
+  bindDeepResearchEvents,
+  renderDeepResearch
 } from "./ui.js";
-import { fetchPricesMap } from "./price.js";
-import { queryAI, fetchModels, screenPotentialStocks, getDetailedAdvice } from "./ai.js";
+import { fetchPricesMap, fetchDeepResearchData } from "./price.js";
+import { queryAI, fetchModels, screenPotentialStocks, getDetailedAdvice, analyzeDeepStock } from "./ai.js";
 import { prepareDataForAI } from "./scanner_data.js";
-import { fetchSymbolHistory, formatHistoryForAI } from "./history.js";
 
 const REFRESH_INTERVAL_MS = 30 * 1000;
 
@@ -242,10 +243,17 @@ export async function initApp(root) {
       const cleanedData = prepareDataForAI(lastScannedData);
       const aiResults = await screenPotentialStocks(cleanedData, targetProfit, appSettings);
       
+      const minRR = parseFloat(root.querySelector("#inp-min-rr")?.value || 0);
+
       const finalResults = aiResults.map(ai => {
         const raw = lastScannedData.find(r => (r.ticker || "").includes(ai.s.toUpperCase()));
-        return raw ? { ...raw, aiReason: ai.r, aiScore: ai.sc, aiDuration: ai.d, aiEntry: ai.e, aiTarget: ai.t, aiStoploss: ai.sl, aiWinRate: ai.w } : null;
-      }).filter(Boolean).sort((a, b) => b.aiWinRate - a.aiWinRate);
+        if (!raw) return null;
+        const rr = calculateRR(ai.e, ai.t, ai.sl, "BUY");
+        return { ...raw, aiReason: ai.r, aiScore: ai.sc, aiDuration: ai.d, aiEntry: ai.e, aiTarget: ai.t, aiStoploss: ai.sl, aiWinRate: ai.w, aiRR: rr };
+      }).filter(Boolean).filter(res => {
+        if (minRR > 0 && res.aiRR !== null && res.aiRR < minRR) return false;
+        return true;
+      }).sort((a, b) => b.aiWinRate - a.aiWinRate);
 
       const ts = Date.now();
       await saveScannerResults(finalResults, ts);
@@ -270,12 +278,8 @@ export async function initApp(root) {
       </div>`);
 
     try {
-      // Fetch 20 phiên lịch sử (hoặc theo cấu hình settings.lookbackPeriods)
-      const lookback = appSettings.lookbackPeriods || 20;
-      const history = await fetchSymbolHistory(fullSymbol, lookback);
-      const historyText = formatHistoryForAI(history, symbol);
-
-      const advice = await getDetailedAdvice(fullSymbol, fullData, appSettings, historyText);
+      // Lấy dữ liệu cơ bản + kĩ thuật từ Scanner TradingView (không dùng lịch sử)
+      const advice = await getDetailedAdvice(fullSymbol, fullData, appSettings, "");
       await saveAdviceCache(fullSymbol, advice);
       showAdviceModal(fullSymbol, advice);
     } catch (err) {
@@ -299,6 +303,29 @@ export async function initApp(root) {
     root.querySelector("#modal-title").innerHTML = `Raw: <strong>${symbol}</strong>`;
     root.querySelector("#modal-body").innerHTML = `<pre style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; font-size:11px; overflow:auto; max-height:350px;">${JSON.stringify(rawData, null, 2)}</pre>`;
     toggleModal(root, "modal-analysis", true);
+  }
+
+  async function handleDeepResearch(symbol) {
+    renderDeepResearch({ symbol, summary: "Đang tải dữ liệu và phân tích...", score: 0 }, root);
+    try {
+      // Fetch TradingView data (Technical & Fundamental)
+      const snapshot = await fetchDeepResearchData(symbol);
+
+      if (!snapshot) {
+        throw new Error("Không thể lấy dữ liệu từ TradingView.");
+      }
+      
+      // Combine data
+      const contextData = {
+        symbol: symbol,
+        technical_and_fundamental: snapshot || {}
+      };
+      
+      const analysis = await analyzeDeepStock(symbol, contextData, appSettings);
+      renderDeepResearch(analysis, root);
+    } catch (err) {
+      renderDeepResearch({ symbol, error: err.message }, root);
+    }
   }
 
   function initExportImport() {
@@ -390,6 +417,7 @@ export async function initApp(root) {
     bindHistoryEvents(handleClearHistory, root);
     bindT0Events(handleT0, root);
     bindTabEvents(root);
+    bindDeepResearchEvents(handleDeepResearch, root);
     bindSettingsEvents(appSettings, async (s) => { 
       appSettings = s; 
       await saveSettings(s); 

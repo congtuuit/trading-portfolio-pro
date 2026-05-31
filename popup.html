@@ -36,11 +36,12 @@
   </header>
 
   <!-- ── Tab Navigation ── -->
-  <nav class="tabs-nav">
+  <div class="tabs-container">
     <button class="tab-btn active" data-target="section-portfolio">💼 Danh Mục</button>
     <button class="tab-btn" data-target="section-advisor">🧠 Advisor</button>
+    <button class="tab-btn" data-target="section-research">🔍 Nghiên cứu</button>
     <button class="tab-btn" data-target="section-logs">📜 Nhật ký</button>
-  </nav>
+  </div>
 
   <div id="section-portfolio" class="tab-content active">
 
@@ -152,10 +153,22 @@
               style="background:linear-gradient(90deg, #1A73E8, #8E24AA); color:white; display:none;">🤖 2. AI Phân
               Tích</button>
           </div>
-          <div class="target-input-group">
-            <label>Mục tiêu:</label>
-            <input id="inp-target-profit" type="number" value="1" step="0.5" style="width:40px;" />
-            <span>%/ngày</span>
+          <div style="display:flex; gap:12px; align-items:center;">
+            <div class="target-input-group" style="display:flex; align-items:center; gap:4px; font-size:11px;">
+              <label>Min R:R:</label>
+              <select id="inp-min-rr" style="padding:2px; border-radius:4px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary); outline:none;">
+                <option value="0">Tắt</option>
+                <option value="1">1:1</option>
+                <option value="1.5">1:1.5</option>
+                <option value="2" selected>1:2</option>
+                <option value="3">1:3</option>
+              </select>
+            </div>
+            <div class="target-input-group">
+              <label>Mục tiêu:</label>
+              <input id="inp-target-profit" type="number" value="1" step="0.5" style="width:40px;" />
+              <span>%/ngày</span>
+            </div>
           </div>
         </div>
       </div>
@@ -199,6 +212,26 @@
       <div id="log-list" style="display:flex; flex-direction:column; gap:8px;">
         <!-- Injected by ui.js -->
         <div class="empty-state">Chưa có hoạt động nào được ghi lại.</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ── Deep Research Section ── -->
+  <div id="section-research" class="tab-content">
+    <section class="advisor-section">
+      <div class="advisor-header" style="flex-direction:column; align-items:flex-start; gap:12px;">
+        <div class="list-title" style="width:100%;">🔍 Nghiên Cứu Cổ Phiếu Chuyên Sâu</div>
+        <div style="display:flex; gap:8px; width:100%;">
+          <input id="inp-deep-symbol" type="text" placeholder="Nhập mã (VD: HOSE:FPT)" style="flex:1; padding:8px; border-radius:4px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary); text-transform:uppercase;" />
+          <button id="btn-deep-research" class="btn" style="background:var(--profit); color:white; padding:8px 16px;">Phân Tích</button>
+        </div>
+      </div>
+      
+      <div id="deep-research-content" style="margin-top:16px;">
+        <div class="empty-state">
+          <div style="font-size:32px; margin-bottom:8px;">📈</div>
+          Nhập mã cổ phiếu để xem báo cáo phân tích đa chiều từ AI (Kỹ thuật & Cơ bản).
+        </div>
       </div>
     </section>
   </div>
