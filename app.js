@@ -386,12 +386,7 @@ export async function initApp(root) {
     renderScannerResults(scannerCache.results, root, scannerCache.timestamp, "#scanner-ai-results");
   }
 
-  bindFormEvents(handleSave, root);
-  bindCloseEvents(handleTakeProfit, root);
-  bindHistoryEvents(handleClearHistory, root);
-  bindT0Events(handleT0, root);
-  bindTabEvents(root);
-  bindScannerEvents(handleScanMarket, handleAIAnalyze, handleAskAdvisor, handleViewRaw, root);
+
 
   // Tab Nhật ký logic
   const logTabBtn = root.querySelector('.tab-btn[data-target="section-logs"]');

@@ -887,3 +887,33 @@ button:disabled {
   font-size: 10px;
   color: var(--text-muted);
 }
+
+/* ── Advisor UI Upgrades ── */
+#inp-target-profit, #inp-min-rr {
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+#inp-target-profit:focus, #inp-min-rr:focus {
+  border-color: var(--border-focus) !important;
+  box-shadow: 0 0 0 2px rgba(76, 156, 226, 0.2);
+}
+
+.scanner-change-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-block;
+  text-align: right;
+}
+.scanner-change-badge.profit {
+  background: rgba(38, 166, 154, 0.12);
+  color: var(--profit);
+}
+.scanner-change-badge.loss {
+  background: rgba(239, 83, 80, 0.12);
+  color: var(--loss);
+}
+
+.advisor-toolbar select, .advisor-toolbar input {
+  font-family: inherit;
+}

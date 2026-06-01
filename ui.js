@@ -335,7 +335,7 @@ export function renderScannerResults(results, root = document, timestamp = null,
         </div>
         <div class="scanner-price-info">
           <div class="scanner-price">${fmt(res.price)}</div>
-          <div class="scanner-change ${res.changePercent >= 0 ? 'profit' : 'loss'}">
+          <div class="scanner-change-badge ${res.changePercent >= 0 ? 'profit' : 'loss'}">
             ${fmtSigned(res.changePercent)}%
           </div>
         </div>
@@ -347,18 +347,18 @@ export function renderScannerResults(results, root = document, timestamp = null,
           ${res.aiScore ? `<span style="background:${res.aiScore >= 8 ? 'var(--profit)' : 'var(--warning, #f1c40f)'}; color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:bold;">An toàn: ${res.aiScore}/10</span>` : ''}
         </div>
         <div style="font-size:11px; margin-bottom:8px; line-height:1.4; color:var(--text-primary); opacity:0.9;">
-          ${res.aiReason}
+          ${parseMarkdown(res.aiReason || '')}
         </div>
         
         <!-- Bảng kế hoạch giao dịch chi tiết -->
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; background:rgba(255,255,255,0.05); padding:8px; border-radius:6px; border:1px dashed rgba(255,255,255,0.1);">
-          <div style="font-size:10px;">📥 Vào (Entry): <strong style="color:var(--text-primary);">${res.aiEntry || 'N/A'}</strong></div>
-          <div style="font-size:10px;">⏳ Giữ: <strong style="color:var(--warning, #f1c40f);">${res.aiDuration || 0} phiên</strong></div>
-          <div style="font-size:10px;">🎯 Target: <strong style="color:var(--profit);">${res.aiTarget || 'N/A'}</strong></div>
-          <div style="font-size:10px;">🛡️ Cắt lỗ: <strong style="color:var(--loss);">${res.aiStoploss || 'N/A'}</strong></div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; background:rgba(255,255,255,0.02); padding:8px; border-radius:6px; border:1px solid var(--border);">
+          <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--accent-blue);">📥 Vào: <strong style="color:var(--text-primary);">${res.aiEntry || 'N/A'}</strong></div>
+          <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--warning, #f1c40f);">⏳ Giữ: <strong style="color:var(--warning, #f1c40f);">${res.aiDuration || 0} phiên</strong></div>
+          <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--profit);">🎯 Target: <strong style="color:var(--profit);">${res.aiTarget || 'N/A'}</strong></div>
+          <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--loss);">🛡️ Cắt lỗ: <strong style="color:var(--loss);">${res.aiStoploss || 'N/A'}</strong></div>
           <div style="font-size:10px; grid-column: span 2; border-top: 1px solid rgba(255,255,255,0.05); padding-top:4px; margin-top:2px; display:flex; justify-content:space-between; align-items:center;">
             <span>🔥 Xác suất thắng: <strong style="color:#00e676;">${res.aiWinRate || 0}%</strong></span>
-            ${res.aiRR ? `<span style="background:${res.aiRR >= 2 ? 'var(--profit)' : (res.aiRR >= 1.5 ? 'var(--warning, #f1c40f)' : 'var(--loss)')}; color:white; padding:2px 6px; border-radius:4px; font-weight:bold;">R:R = 1:${res.aiRR}</span>` : ''}
+            ${res.aiRR ? `<span style="background:${res.aiRR >= 2 ? 'var(--profit)' : (res.aiRR >= 1.5 ? 'var(--warning, #f1c40f)' : 'var(--loss)')}; color:white; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:9px;">R:R = 1:${res.aiRR}</span>` : ''}
           </div>
         </div>
       </div>
