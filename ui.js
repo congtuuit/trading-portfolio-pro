@@ -322,7 +322,7 @@ export function renderScannerResults(results, root = document, timestamp = null,
       <div class="scanner-card ${isAIList ? 'ai-card' : ''}" data-symbol="${ticker}" data-raw='${JSON.stringify(res).replace(/'/g, "&apos;")}'>
         <div class="scanner-main">
           <div style="display:flex; align-items:center; gap:6px;">
-            <a href="${tvUrl}" target="_self" class="ticker-link" title="Xem biểu đồ TradingView (tab hiện tại)">
+            <a href="${tvUrl}" target="_self" class="ticker-link" data-tooltip="Xem biểu đồ TradingView (tab hiện tại)">
               <span class="scanner-ticker">${displayTicker}</span>
               <span style="font-size:11px;">📈</span>
             </a>
@@ -362,7 +362,7 @@ export function renderScannerResults(results, root = document, timestamp = null,
           <span>RSI: <span class="stat-val">${Math.round(res.rsi)}</span></span>
           <span>Vol: <span class="stat-val">${(res.volume / 1000000).toFixed(1)}M</span></span>
         </div>
-        <button class="btn-view-raw" style="background:var(--bg-input); border:1px solid var(--border); color:var(--text-muted); font-size:10px; padding:2px 6px; border-radius:4px;">Raw 📄</button>
+        <button class="btn-view-raw" style="background:var(--bg-input); border:1px solid var(--border); color:var(--text-muted); font-size:10px; padding:2px 6px; border-radius:4px;" data-tooltip="Xem dữ liệu gốc JSON từ TradingView">Raw 📄</button>
           </div>
         ` : ''}
       </div>
@@ -671,8 +671,8 @@ function renderTradeCard(trade, priceData) {
 
   let trendIndicator = "";
   if (priceData.ema200 && priceData.close) {
-    if (priceData.close > priceData.ema200) trendIndicator = "<span style='color:var(--profit);font-size:10px;margin-left:4px;' title='Trend Tăng'>▲</span>";
-    else if (priceData.close < priceData.ema200) trendIndicator = "<span style='color:var(--loss);font-size:10px;margin-left:4px;' title='Trend Giảm'>▼</span>";
+    if (priceData.close > priceData.ema200) trendIndicator = "<span style='color:var(--profit);font-size:10px;margin-left:4px;' data-tooltip='Trend Tăng'>▲</span>";
+    else if (priceData.close < priceData.ema200) trendIndicator = "<span style='color:var(--loss);font-size:10px;margin-left:4px;' data-tooltip='Trend Giảm'>▼</span>";
   }
 
   const safeSymbol = escapeHTML(trade.symbol);
@@ -681,7 +681,7 @@ function renderTradeCard(trade, priceData) {
 
   return `
     <div class="trade-header">
-      <span class="trade-symbol">${safeSymbol}${trendIndicator} <span class="btn-info" data-id="${trade.id}" style="cursor:pointer;font-size:12px;margin-left:4px;filter:grayscale(100%);" title="Xem phân tích kỹ thuật">ℹ️</span></span>
+      <span class="trade-symbol">${safeSymbol}${trendIndicator} <span class="btn-info" data-id="${trade.id}" style="cursor:pointer;font-size:12px;margin-left:4px;filter:grayscale(100%);" data-tooltip="Xem phân tích kỹ thuật">ℹ️</span></span>
       <span class="badge ${typeClass}">${trade.type}</span>
       <span class="trade-qty">×${fmt(parseFloat(trade.quantity))}</span>
     </div>
@@ -697,11 +697,11 @@ function renderTradeCard(trade, priceData) {
         ${fmtSigned(pnl / 1000)} <span class="pnl-pct">(${fmtSigned(pct)}%)</span>
       </div>
       <div class="trade-actions">
-        <button class="btn btn-view" data-symbol="${safeSymbol}" title="View on TradingView">📈 View</button>
-        <button class="btn btn-close-trade" data-id="${trade.id}" style="background:#089981; color:white;" title="Chốt Lời & Cấn Trừ Hạ Giá Vốn">💰 Chốt</button>
-        <button class="btn btn-dca" data-id="${trade.id}" style="background:#5264b3; color:white;" title="DCA / Gỡ Lỗ">🧮 DCA</button>
-        <button class="btn btn-edit"   data-id="${trade.id}" style="background:var(--bg-input); color:var(--text-primary);">✏️ Edit</button>
-        <button class="btn btn-delete" data-id="${trade.id}">🗑 Delete</button>
+        <button class="btn btn-view" data-symbol="${safeSymbol}" data-tooltip="Xem biểu đồ TradingView">📈 View</button>
+        <button class="btn btn-close-trade" data-id="${trade.id}" style="background:#089981; color:white;" data-tooltip="Chốt Lời & Cấn Trừ Hạ Giá Vốn">💰 Chốt</button>
+        <button class="btn btn-dca" data-id="${trade.id}" style="background:#5264b3; color:white;" data-tooltip="DCA / Gỡ Lỗ">🧮 DCA</button>
+        <button class="btn btn-edit"   data-id="${trade.id}" style="background:var(--bg-input); color:var(--text-primary); padding: 4px 6px;" data-tooltip="Sửa vị thế">✏️</button>
+        <button class="btn btn-delete" data-id="${trade.id}" style="background:var(--btn-del); color:white; padding: 4px 6px;" data-tooltip="Xóa vị thế">🗑</button>
       </div>
     </div>`;
 }
@@ -1429,17 +1429,17 @@ export function renderDeepResearch(data, root = document) {
       <div style="margin-top:16px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.1); padding:12px; border-radius:6px;">
         <h3 style="margin:0 0 12px 0; font-size:14px; color:var(--text-primary);">🎯 Kế hoạch Giao dịch</h3>
         <div style="display:flex; justify-content:space-between; text-align:center; gap:8px;">
-          <div style="flex:1; background:rgba(255,255,255,0.05); padding:8px; border-radius:4px; border-left:3px solid var(--accent-blue);">
-            <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">Giá Vào (Entry)</div>
-            <div style="font-size:13px; font-weight:bold; color:var(--text-primary);">${data.trading_plan.entry || "-"}</div>
+          <div style="flex:1; background:rgba(255,255,255,0.05); padding:8px; border-radius:4px; border-top:3px solid var(--accent-blue);">
+            <div style="font-size:10px; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.3px;">Giá Vào (Entry)</div>
+            <div class="price-zone-indicator price-zone-entry" style="display:block; text-align:center; padding:4px 2px;">${data.trading_plan.entry || "-"}</div>
           </div>
-          <div style="flex:1; background:rgba(255,255,255,0.05); padding:8px; border-radius:4px; border-left:3px solid var(--profit);">
-            <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">Mục Tiêu (Target)</div>
-            <div style="font-size:13px; font-weight:bold; color:var(--profit);">${data.trading_plan.target || "-"}</div>
+          <div style="flex:1; background:rgba(255,255,255,0.05); padding:8px; border-radius:4px; border-top:3px solid var(--profit);">
+            <div style="font-size:10px; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.3px;">Mục Tiêu (Target)</div>
+            <div class="price-zone-indicator price-zone-target" style="display:block; text-align:center; padding:4px 2px;">${data.trading_plan.target || "-"}</div>
           </div>
-          <div style="flex:1; background:rgba(255,255,255,0.05); padding:8px; border-radius:4px; border-left:3px solid var(--loss);">
-            <div style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">Cắt Lỗ (Stoploss)</div>
-            <div style="font-size:13px; font-weight:bold; color:var(--loss);">${data.trading_plan.stoploss || "-"}</div>
+          <div style="flex:1; background:rgba(255,255,255,0.05); padding:8px; border-radius:4px; border-top:3px solid var(--loss);">
+            <div style="font-size:10px; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.3px;">Cắt Lỗ (Stoploss)</div>
+            <div class="price-zone-indicator price-zone-stoploss" style="display:block; text-align:center; padding:4px 2px;">${data.trading_plan.stoploss || "-"}</div>
           </div>
         </div>
       </div>

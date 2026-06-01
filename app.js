@@ -23,7 +23,7 @@ import {
   getSystemLogs,
   addSystemLog
 } from "./storage.js";
-import { getDivisor, escapeHTML, calculateRR } from "./utils.js";
+import { getDivisor, escapeHTML, calculateRR, parseMarkdown } from "./utils.js";
 import {
   renderPortfolio,
   bindFormEvents,
@@ -290,10 +290,10 @@ export async function initApp(root) {
   function showAdviceModal(symbol, content) {
     root.querySelector("#modal-title").innerHTML = `AI Advisor: <strong>${symbol.split(':')[1] || symbol}</strong>`;
     const body = root.querySelector("#modal-body");
-    if (content.includes("empty-state")) {
+    if (content.includes("empty-state") || content.includes("loading-wrapper")) {
       body.innerHTML = content;
     } else {
-      const formatted = escapeHTML(content).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>');
+      const formatted = parseMarkdown(content);
       body.innerHTML = `<div style="font-size:13px; line-height:1.6;">${formatted}</div>`;
     }
     toggleModal(root, "modal-analysis", true);
