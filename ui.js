@@ -5,7 +5,7 @@
 
 import { fetchPricesMap } from "./price.js";
 import { calculatePnL } from "./pnl.js";
-import { getDivisor, escapeHTML, calculateT0Scenario } from "./utils.js";
+import { getDivisor, escapeHTML, calculateT0Scenario, parseMarkdown } from "./utils.js";
 import { suggestEntryExit, calculateFibLevels } from "./analysis.js";
 
 /** Format a number to 2 decimal places with thousands separators */
@@ -200,7 +200,12 @@ export function bindAIPortfolio(onAskPortfolio, root = document) {
 export function openChatPanel(root = document) {
   root.querySelector("#panel-chat").classList.add("open");
   const msgContainer = root.querySelector("#chat-messages");
-  msgContainer.scrollTop = msgContainer.scrollHeight;
+  if (msgContainer) msgContainer.scrollTop = msgContainer.scrollHeight;
+  const inpChat = root.querySelector("#inp-chat");
+  if (inpChat) {
+    inpChat.focus();
+    setTimeout(() => inpChat.focus(), 100);
+  }
 }
 
 export function closeChatPanel(root = document) {
@@ -442,9 +447,8 @@ export function renderChatHistory(history, root = document) {
       let formattedText = msg.text;
       let isHtml = false;
       
-      if (msg.role === "assistant") {
-        const escaped = escapeHTML(msg.text);
-        formattedText = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      if (msg.role === "assistant" || msg.role === "system") {
+        formattedText = parseMarkdown(msg.text);
         isHtml = true;
       }
       
@@ -470,21 +474,130 @@ export function bindChatEvents(onSendChat, onClearChat, root = document) {
         onClearChat();
         root.querySelector("#chat-messages").innerHTML = `
           <div class="chat-msg ai-msg">
-            Đã xóa lịch sử trò chuyện. Tôi có thể giúp gì cho bạn?
+            Đã xóa lịch sử trò chuyện. Bạn có thể tra cứu tự do (VD: "HPG thế nào?") hoặc sử dụng lệnh:<br/>
+            - <code>/analyze FPT</code>: Phân tích sâu kỹ thuật/cơ bản<br/>
+            - <code>/dca HPG</code>: Lập kế hoạch gom giá<br/>
+            - <code>/price TCB</code>: Báo giá nhanh
           </div>
         `;
       }
     });
   }
   
+  const suggestionsBox = root.querySelector("#chat-suggestions");
+  const availableCommands = [
+    { cmd: "/analyze", desc: "Phân tích sâu kĩ thuật & cơ bản cổ phiếu" },
+    { cmd: "/predict", desc: "Dự đoán xu hướng phát triển & tỷ lệ chuẩn xác %" },
+    { cmd: "/scenarios", desc: "Xây dựng kịch bản giao dịch (Tốt/Xấu/Đi ngang) %" },
+    { cmd: "/dca", desc: "Lập kế hoạch gom tích lũy / trung bình giá" },
+    { cmd: "/price", desc: "Xem nhanh báo giá và xu hướng chỉ báo" }
+  ];
+
+  let selectedIndex = 0;
+
+  function renderSuggestions(filterText) {
+    if (!suggestionsBox) return;
+    const filter = filterText.toLowerCase();
+    const matched = availableCommands.filter(c => c.cmd.startsWith(filter));
+    
+    if (matched.length === 0) {
+      suggestionsBox.style.display = "none";
+      selectedIndex = -1;
+      return;
+    }
+
+    // Reset selectedIndex if it goes out of range
+    if (selectedIndex >= matched.length || selectedIndex < 0) {
+      selectedIndex = 0;
+    }
+
+    suggestionsBox.innerHTML = matched.map((c, idx) => `
+      <div class="suggestion-item ${idx === selectedIndex ? 'selected' : ''}" data-cmd="${c.cmd}" data-index="${idx}">
+        <span class="suggestion-cmd">${c.cmd}</span>
+        <span class="suggestion-desc">${c.desc}</span>
+      </div>
+    `).join("");
+
+    suggestionsBox.style.display = "flex";
+  }
+
+  function hideSuggestions() {
+    if (suggestionsBox) {
+      suggestionsBox.style.display = "none";
+      selectedIndex = 0;
+    }
+  }
+
+  function updateSelection(newIndex) {
+    if (!suggestionsBox) return;
+    const items = suggestionsBox.querySelectorAll(".suggestion-item");
+    if (items.length === 0) return;
+
+    if (newIndex < 0) newIndex = items.length - 1;
+    if (newIndex >= items.length) newIndex = 0;
+
+    selectedIndex = newIndex;
+
+    items.forEach((item, idx) => {
+      if (idx === selectedIndex) {
+        item.classList.add("selected");
+        item.scrollIntoView({ block: "nearest" });
+      } else {
+        item.classList.remove("selected");
+      }
+    });
+  }
+
+  if (suggestionsBox) {
+    suggestionsBox.addEventListener("click", (e) => {
+      const item = e.target.closest(".suggestion-item");
+      if (!item) return;
+      const cmd = item.dataset.cmd;
+      inpChat.value = cmd + " ";
+      btnSend.disabled = false;
+      hideSuggestions();
+      inpChat.focus();
+    });
+  }
+
   if (inpChat) {
     inpChat.addEventListener("input", () => {
-      btnSend.disabled = inpChat.value.trim() === "";
+      const val = inpChat.value;
+      btnSend.disabled = val.trim() === "";
+      
+      if (val.startsWith("/")) {
+        renderSuggestions(val.split(/\s+/)[0]);
+      } else {
+        hideSuggestions();
+      }
     });
     inpChat.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        chatForm.dispatchEvent(new Event("submit"));
+      const isVisible = suggestionsBox && suggestionsBox.style.display === "flex";
+      
+      if (isVisible) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          updateSelection(selectedIndex + 1);
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          updateSelection(selectedIndex - 1);
+        } else if (e.key === "Tab" || e.key === "Enter") {
+          e.preventDefault();
+          const items = suggestionsBox.querySelectorAll(".suggestion-item");
+          const selectedEl = items[selectedIndex];
+          if (selectedEl) {
+            const cmd = selectedEl.dataset.cmd;
+            inpChat.value = cmd + " ";
+            btnSend.disabled = false;
+            hideSuggestions();
+            inpChat.focus();
+          }
+        }
+      } else {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          chatForm.dispatchEvent(new Event("submit"));
+        }
       }
     });
   }
@@ -492,6 +605,7 @@ export function bindChatEvents(onSendChat, onClearChat, root = document) {
   if (chatForm) {
     chatForm.addEventListener("submit", async (e) => {
       e.preventDefault();
+      hideSuggestions();
       const text = inpChat.value.trim();
       if (!text) return;
       
@@ -505,9 +619,7 @@ export function bindChatEvents(onSendChat, onClearChat, root = document) {
       try {
         const responseText = await onSendChat(text);
         removeTypingIndicator(root);
-        // Safe HTML formatting: Escape first, then format bold
-        const escapedResp = escapeHTML(responseText);
-        const formattedResp = escapedResp.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        const formattedResp = parseMarkdown(responseText);
         appendChatMessage("assistant", formattedResp, true, root);
       } catch (err) {
         removeTypingIndicator(root);

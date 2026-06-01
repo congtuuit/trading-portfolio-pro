@@ -548,10 +548,15 @@
     <div id="chat-messages"
       style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;font-size:13px;line-height:1.5;">
       <div class="chat-msg ai-msg">
-        Xin chào! Tôi là Trợ Lý AI. Tôi đã sẵn sàng để giúp bạn lọc tín hiệu, tính DCA hoặc quản trị rủi ro danh mục hôm
-        nay.
+        Xin chào! Tôi là Trợ Lý AI. Bạn có thể hỏi đáp tự do (VD: "HPG thế nào?") hoặc sử dụng lệnh:<br/>
+        - <code>/analyze FPT</code>: Phân tích sâu kỹ thuật & cơ bản<br/>
+        - <code>/dca HPG</code>: Lập kế hoạch mua gom gom giá<br/>
+        - <code>/price TCB</code>: Báo giá nhanh và xu hướng
       </div>
     </div>
+
+    <!-- Command Suggestions Dropdown -->
+    <div id="chat-suggestions" style="display:none; position:absolute; bottom:68px; left:16px; right:16px; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; box-shadow:0 -4px 15px rgba(0,0,0,0.5); z-index:960; max-height:150px; overflow-y:auto; flex-direction:column; padding:4px 0;"></div>
 
     <!-- Chat Input Form -->
     <form id="chat-form"

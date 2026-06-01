@@ -856,3 +856,34 @@ button:disabled {
 .header .btn svg {
   stroke-width: 2.2px;
 }
+
+/* Chat Command Suggestions Dropdown */
+.suggestion-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition: background 0.15s;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+.suggestion-item:hover {
+  background: var(--bg-hover);
+}
+.suggestion-item.selected {
+  background: rgba(76, 156, 226, 0.15) !important;
+  border-left: 3px solid var(--accent-blue);
+  padding-left: 9px;
+}
+.suggestion-cmd {
+  font-weight: 600;
+  color: var(--accent-blue);
+  font-size: 11px;
+}
+.suggestion-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+}

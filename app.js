@@ -24,6 +24,7 @@ import {
   addSystemLog
 } from "./storage.js";
 import { getDivisor, escapeHTML, calculateRR, parseMarkdown } from "./utils.js";
+import { getLiveStockContext } from "./mcp.js";
 import {
   renderPortfolio,
   bindFormEvents,
@@ -435,7 +436,18 @@ export async function initApp(root) {
   function setupAIBindings() {
     bindChatEvents(async (t) => {
       chatHistory.push({ role: "user", text: t }); await saveChatHistory(chatHistory);
-      const res = await queryAI(chatHistory, appSettings);
+      
+      const liveContext = await getLiveStockContext(t);
+      let queryHistory = [...chatHistory];
+      if (liveContext) {
+        const lastMsg = queryHistory[queryHistory.length - 1];
+        queryHistory[queryHistory.length - 1] = {
+          role: lastMsg.role,
+          text: lastMsg.text + liveContext
+        };
+      }
+      
+      const res = await queryAI(queryHistory, appSettings);
       chatHistory.push({ role: "assistant", text: res }); await saveChatHistory(chatHistory);
       return res;
     }, async () => { chatHistory = []; await saveChatHistory(chatHistory); }, root);
