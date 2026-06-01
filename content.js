@@ -194,4 +194,15 @@ const adObserver = new MutationObserver((mutations) => {
 });
 
 adObserver.observe(document.body || document.documentElement, { childList: true, subtree: true });
+
+// Check and hide gopro dialog every 2 seconds as fallback
+setInterval(() => {
+  const goproDialogs = document.querySelectorAll('div[data-dialog-name="gopro"]');
+  goproDialogs.forEach(el => {
+    if (el.style.display !== "none") {
+      el.style.display = "none";
+    }
+  });
+}, 2000);
+
 injectWidget();
