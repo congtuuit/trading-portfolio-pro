@@ -46,6 +46,7 @@
   <!-- ── Tab Navigation ── -->
   <div class="tabs-container">
     <button class="tab-btn active" data-target="section-portfolio" data-tooltip="Xem vị thế hiện tại và quản lý danh mục đầu tư">💼 Danh Mục</button>
+    <button class="tab-btn" data-target="section-signals" data-tooltip="Tín hiệu tự động bắt được từ TradingView">📡 Tín Hiệu</button>
     <button class="tab-btn" data-target="section-advisor" data-tooltip="Quét tín hiệu thị trường và nhận gợi ý từ AI">🧠 Advisor</button>
     <button class="tab-btn" data-target="section-research" data-tooltip="Phân tích cổ phiếu chuyên sâu kỹ thuật & cơ bản">🔍 Nghiên cứu</button>
     <button class="tab-btn" data-target="section-logs" data-tooltip="Xem nhật ký hoạt động hệ thống">📜 Nhật ký</button>
@@ -141,6 +142,19 @@
       <div id="portfolio-list"></div>
     </section>
   </div><!-- /section-portfolio -->
+
+  <!-- ── Signals Section ── -->
+  <div id="section-signals" class="tab-content">
+    <section class="advisor-section">
+      <div class="advisor-header" style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+        <div class="list-title" style="margin-bottom:0;">📡 Tín Hiệu Bắt Được</div>
+        <button id="btn-clear-signals" class="btn" style="background:none; border:none; color:var(--text-muted); font-size:11px; cursor:pointer;" data-tooltip="Xóa toàn bộ tín hiệu">🗑 Xóa</button>
+      </div>
+      <div id="caught-signals-list" style="display:flex; flex-direction:column; gap:8px; margin-top: 12px;">
+        <div class="empty-state">Đang chờ tín hiệu từ TradingView...</div>
+      </div>
+    </section>
+  </div>
 
   <!-- ── AI Advisor Section ── -->
   <div id="section-advisor" class="tab-content">

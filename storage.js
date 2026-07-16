@@ -185,3 +185,16 @@ export async function getSystemLogs() {
   const data = await chrome.storage.local.get("tpp_logs");
   return data.tpp_logs || [];
 }
+
+// ── Caught Signals ──
+export async function getCaughtSignals() {
+  const data = await chrome.storage.local.get("tpp_caught_signals");
+  return data.tpp_caught_signals || [];
+}
+
+export async function saveCaughtSignals(signals) {
+  // Giữ lại 50 tín hiệu gần nhất
+  const limitedSignals = signals.slice(0, 50);
+  await chrome.storage.local.set({ tpp_caught_signals: limitedSignals });
+}
+

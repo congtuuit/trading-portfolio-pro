@@ -21,7 +21,9 @@ import {
   saveAdviceCache,
   clearAdviceCache,
   getSystemLogs,
-  addSystemLog
+  addSystemLog,
+  getCaughtSignals,
+  saveCaughtSignals
 } from "./storage.js";
 import { getDivisor, escapeHTML, calculateRR, parseMarkdown } from "./utils.js";
 import { getLiveStockContext } from "./mcp.js";
@@ -49,7 +51,9 @@ import {
   renderSystemLogs,
   toggleModal,
   bindDeepResearchEvents,
-  renderDeepResearch
+  renderDeepResearch,
+  renderCaughtSignals,
+  bindCaughtSignalEvents
 } from "./ui.js";
 import { fetchPricesMap, fetchDeepResearchData } from "./price.js";
 import { queryAI, fetchModels, screenPotentialStocks, getDetailedAdvice, analyzeDeepStock } from "./ai.js";
@@ -65,6 +69,7 @@ export async function initApp(root) {
   let chatHistory = [];
   let tradeHistory = [];
   let lastScannedData = [];
+  let caughtSignals = [];
 
   async function updatePricesAndRender() {
     const symbols = portfolio.map((t) => t.symbol);
@@ -367,6 +372,7 @@ export async function initApp(root) {
   applyTheme(appSettings.theme);
   chatHistory = await getChatHistory();
   tradeHistory = await getTradeHistory();
+  caughtSignals = await getCaughtSignals();
   const scannerCache = await getScannerResults();
   const rawCache = await getRawScannerResults();
 
@@ -401,11 +407,51 @@ export async function initApp(root) {
   setupAIBindings();
   setupScannerBindings();
   setupManagementBindings();
+  setupSignalCatcher();
 
   updatePricesAndRender();
   startAutoRefresh();
 
   // ── INTERNAL BINDING HELPERS ──
+
+  function setupSignalCatcher() {
+    document.addEventListener('tpp-new-signal', async (e) => {
+      const signalData = e.detail;
+      signalData.timestamp = Date.now();
+      // Thêm tín hiệu vào đầu mảng
+      caughtSignals.unshift(signalData);
+      caughtSignals = caughtSignals.slice(0, 50);
+      await saveCaughtSignals(caughtSignals);
+      
+      renderCaughtSignals(caughtSignals, root);
+      console.log("[App] Signal saved to storage:", signalData);
+    });
+
+    bindCaughtSignalEvents(() => caughtSignals, async (sig) => {
+      // populate the form
+      const divisor = getDivisor(sig.symbol);
+      const fakeId = "trade_" + Date.now();
+      root.querySelector("#inp-symbol").value = sig.symbol;
+      root.querySelector("#inp-type").value = sig.action;
+      root.querySelector("#inp-entry").value = sig.price / divisor;
+      root.querySelector("#inp-sl").value = sig.sl ? (sig.sl / divisor) : "";
+      root.querySelector("#inp-tp").value = sig.tp1 ? (sig.tp1 / divisor) : "";
+      
+      // Navigate to portfolio tab
+      root.querySelector('.tab-btn[data-target="section-portfolio"]').click();
+      // Ensure form is visible
+      root.querySelector("#form-section").style.display = "block";
+      root.querySelector("#form-title").textContent = "➕ Thêm vị thế từ Tín Hiệu";
+      
+    }, async () => {
+      caughtSignals = [];
+      await saveCaughtSignals(caughtSignals);
+      renderCaughtSignals(caughtSignals, root);
+    }, root);
+
+    // Initial render
+    renderCaughtSignals(caughtSignals, root);
+  }
 
   function setupCoreBindings() {
     bindFormEvents(handleSave, root);

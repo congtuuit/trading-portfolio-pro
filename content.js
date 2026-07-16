@@ -185,10 +185,46 @@ function hideAdsDetectDialog(node) {
   if (el && el.style.display !== "none") el.style.display = "none";
 }
 
+// ── TV Alert Signal Catcher (Phase 1) ──
+function parseTradingViewAlert(node) {
+  // Tìm kiếm nội dung văn bản có thể chứa JSON từ Pine Script
+  // Các class thông dụng của TradingView cho popup alerts:
+  // .tv-alert-notification-dialog__message, .toast-content, hoặc đơn giản là textContent
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    // Thường text cảnh báo nằm trong nội dung thẻ
+    const text = node.textContent || "";
+    if (text.includes('{"action"') && text.includes('}')) {
+      try {
+        // Bóc tách đoạn JSON
+        const match = text.match(/\{.*?\}/);
+        if (match) {
+          const signalData = JSON.parse(match[0]);
+          if (signalData.action && signalData.price) {
+            console.log("[TPP] Nhận được tín hiệu mới:", signalData);
+            // Gửi dữ liệu tín hiệu đến Widget App (app.js) thông qua Event
+            const event = new CustomEvent('tpp-new-signal', { detail: signalData });
+            document.dispatchEvent(event);
+            
+            // Tùy chọn: Gửi vào background script để báo Notification
+            if (chrome && chrome.runtime && chrome.runtime.sendMessage) {
+              chrome.runtime.sendMessage({ type: "NEW_SIGNAL", payload: signalData }).catch(()=>console.log("No background receiver"));
+            }
+          }
+        }
+      } catch (e) {
+        console.error("[TPP] Lỗi phân giải JSON Alert:", e);
+      }
+    }
+  }
+}
+
 const adObserver = new MutationObserver((mutations) => {
   for (const mutation of mutations) {
     if (mutation.addedNodes.length) {
-      mutation.addedNodes.forEach(hideAdsDetectDialog);
+      mutation.addedNodes.forEach(node => {
+        hideAdsDetectDialog(node);
+        parseTradingViewAlert(node);
+      });
     }
   }
 });

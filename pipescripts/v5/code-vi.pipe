@@ -1,0 +1,717 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © congtuuit — Hybrid Trading System V5 — 3-Layer Confluence Engine
+// Architecture: CONTEXT → ZONE → TRIGGER
+// Philosophy: Minimal filters, high-confidence signals, probability-based
+
+//@version=5
+indicator("Hybrid Trading System V5 — 3-Layer", overlay=true, max_boxes_count=150, max_labels_count=300, max_lines_count=200)
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  1) DATA MODEL                                    ║
+// ╚═══════════════════════════════════════════════════╝
+type Zone
+    float top
+    float bottom
+    int   start_bar
+    int   zone_type       // 1 = Demand, -1 = Supply
+    int   touch_count
+    float strength_score
+    bool  is_active
+    bool  is_triggered
+    box   box_id
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  2) INPUTS                                        ║
+// ╚═══════════════════════════════════════════════════╝
+
+// ── Layer 1: Context ──
+grp_ctx = "🔷 Layer 1: Bối Cảnh Thị Trường"
+ema_length     = input.int(200,  "Chu kỳ EMA Xu hướng",       minval=1,   group=grp_ctx)
+struct_left    = input.int(10,   "Pivot Structure (Trái)",     minval=3,   group=grp_ctx)
+struct_right   = input.int(3,    "Pivot Structure (Phải)",     minval=1,   group=grp_ctx)
+
+grp_htf = "📡 Multi-Timeframe"
+use_mtf    = input.bool(true,   "Bật Lọc Xu Hướng Khung Lớn",  group=grp_htf)
+htf_mode   = input.string("Auto","Chế độ HTF", options=["Auto","Custom"], group=grp_htf)
+htf_custom = input.timeframe("1D","Khung Lớn Tùy Chỉnh",       group=grp_htf)
+htf_ema_l  = input.int(200,     "Chu kỳ EMA Khung Lớn",        group=grp_htf, minval=1)
+
+grp_session = "🕐 Bộ Lọc Phiên"
+use_session_filter = input.bool(true,       "Chỉ Giao Dịch Trong Phiên",  group=grp_session)
+london_sess        = input.session("0800-1600","London (UTC)",             group=grp_session)
+ny_sess            = input.session("1300-2100","New York (UTC)",           group=grp_session)
+
+// ── Layer 2: Zones ──
+grp_zone = "🧱 Layer 2: Vùng Cung/Cầu"
+pivot_left    = input.int(20,    "Pivot Zone (Trái)",           minval=1,   group=grp_zone)
+pivot_right   = input.int(5,     "Pivot Zone (Phải)",           minval=1,   group=grp_zone)
+atr_length    = input.int(14,    "Chu kỳ ATR",                 minval=1,   group=grp_zone)
+atr_zone_mult = input.float(0.5, "Hệ số ATR Vùng Cản",        minval=0.1, step=0.1, group=grp_zone)
+max_active_zones  = input.int(12,"Số Vùng Cản Tối Đa",         minval=1,   maxval=50, group=grp_zone)
+min_zone_distance = input.float(0.4,"Khoảng cách Vùng Min (ATR)", minval=0.1, step=0.1, group=grp_zone)
+req_imbalance     = input.bool(false,"Yêu cầu FVG/Imbalance mạnh", tooltip="Chỉ tạo zone nếu nến sau pivot có thân > 0.8 ATR (lực đẩy Smart Money)", group=grp_zone)
+first_touch_only  = input.bool(true, "Chỉ Giao Dịch Chạm Lần Đầu", group=grp_zone)
+delete_invalidated = input.bool(false,"Xoá Hộp bị thủng",      group=grp_zone)
+
+// ── Layer 3: Trigger ──
+grp_trigger = "🎯 Layer 3: Kích Hoạt"
+rsi_length     = input.int(14,   "Chu kỳ RSI (Divergence)",     minval=2,   group=grp_trigger)
+rsi_div_left   = input.int(5,    "RSI Pivot (Trái)",            minval=2,   group=grp_trigger)
+rsi_div_right  = input.int(5,    "RSI Pivot (Phải)",            minval=2,   group=grp_trigger)
+use_vol_filter = input.bool(false,"Volume Surge (Bonus điểm)",  group=grp_trigger, tooltip="Không bắt buộc — chỉ cộng thêm điểm confluence nếu volume đột biến")
+vol_ma_length  = input.int(20,   "MA Volume",                   group=grp_trigger, minval=1)
+vol_surge_mult = input.float(1.5,"Volume / TB tối thiểu",       group=grp_trigger, minval=1.0, step=0.1)
+
+// ── Confluence ──
+grp_score = "⭐ Confluence"
+min_score = input.float(4.0, "Điểm Confluence tối thiểu (0–10)", group=grp_score, minval=0, maxval=10, step=0.5, tooltip="Weak<4, Medium 4-6, Strong>6")
+
+// ── Risk Management ──
+grp_risk = "🛡 Quản Trị Rủi Ro"
+show_sl_tp   = input.bool(true,  "Hiện SL/TP",            group=grp_risk)
+sl_atr_mult  = input.float(1.5,  "SL = ATR × ?",          group=grp_risk, minval=0.1, step=0.1)
+rr_ratio_1   = input.float(1.5,  "R:R cho TP1",           group=grp_risk, minval=0.5, step=0.5)
+rr_ratio_2   = input.float(3.0,  "R:R cho TP2",           group=grp_risk, minval=1.0, step=0.5)
+account_bal  = input.float(10000,"Vốn ($)",                group=grp_risk, minval=100)
+risk_pct     = input.float(1.0,  "Rủi ro / Lệnh (%)",     group=grp_risk, minval=0.1, step=0.1)
+is_forex     = input.bool(false, "Forex (Lot)?",           group=grp_risk)
+
+// ── Visual ──
+grp_vis = "🎨 Hiển Thị"
+show_structure   = input.bool(true, "Hiện BOS/ChoCH",        group=grp_vis)
+show_bb          = input.bool(true, "Hiện Bollinger Bands",   group=grp_vis)
+show_ema         = input.bool(true, "Hiện EMA 200",          group=grp_vis)
+label_signals    = input.bool(true, "Hiện Nhãn Tín Hiệu",   group=grp_vis)
+show_trend_bg    = input.bool(true, "Nền màu Xu Hướng",     group=grp_vis)
+show_dashboard   = input.bool(true, "Hiện Bảng Điều Khiển",  group=grp_vis)
+
+// ── Win-Rate ──
+grp_wr = "📊 Thống Kê"
+future_sessions      = input.int(5,    "Số nến đánh giá",       group=grp_wr, minval=1, maxval=50)
+winrate_min_samples  = input.int(5,    "Mẫu tối thiểu",        group=grp_wr, minval=1)
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  3) STATE                                         ║
+// ╚═══════════════════════════════════════════════════╝
+var Zone[] active_zones = array.new<Zone>()
+var bool buy_signal     = false
+var bool sell_signal    = false
+
+// Structure tracking
+var float last_sh   = na      // last swing high
+var float last_sl   = na      // last swing low
+var float prev_sh   = na
+var float prev_sl   = na
+var int   mkt_structure = 0   // 1=bull, -1=bear, 0=undefined
+
+// RSI Divergence state
+var float prev_rsi_low      = na
+var float prev_price_at_rsi_low = na
+var float prev_rsi_high     = na
+var float prev_price_at_rsi_high = na
+
+// Win-rate buffers (fixed — per-bar SL check)
+var int[]   wr_bars    = array.new<int>()
+var float[] wr_prices  = array.new<float>()
+var float[] wr_sls     = array.new<float>()
+var int[]   wr_dirs    = array.new<int>()
+var bool[]  wr_sl_hit  = array.new<bool>()   // NEW: track SL hit per-bar
+var int     buy_wins   = 0
+var int     buy_total  = 0
+var int     sell_wins  = 0
+var int     sell_total = 0
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  4) CORE SERIES                                   ║
+// ╚═══════════════════════════════════════════════════╝
+atr_val    = ta.atr(atr_length)
+ema_regime = ta.ema(close, ema_length)
+is_uptrend   = close > ema_regime
+is_downtrend = close < ema_regime
+
+// ── Bollinger Bands (visual only — NOT a filter) ──
+bb_basis = ta.sma(close, 20)
+bb_dev   = 2.0 * ta.stdev(close, 20)
+bb_upper = bb_basis + bb_dev
+bb_lower = bb_basis - bb_dev
+bb_width = (bb_upper - bb_lower) / bb_basis
+bb_squeeze = bb_width <= ta.lowest(bb_width, 50) * 1.1
+
+plot(show_bb ? bb_basis : na, "BB Mid",   color=color.new(#2962FF, 60))
+p_bbu = plot(show_bb ? bb_upper : na, "BB Upper", color=color.new(#F23645, 60))
+p_bbl = plot(show_bb ? bb_lower : na, "BB Lower", color=color.new(#089981, 60))
+fill(p_bbu, p_bbl, title="BB Fill", color=color.rgb(33, 150, 243, 95))
+plot(show_ema ? ema_regime : na, "EMA 200", color=color.new(color.gray, 30), linewidth=2)
+
+// ── Volume ──
+vol_ma     = ta.sma(volume, vol_ma_length)
+vol_surge  = volume >= vol_ma * vol_surge_mult
+
+// ── HTF (Anti-Repaint: [1] + lookahead_on) ──
+get_auto_htf() =>
+    string res = "D"
+    if timeframe.isintraday
+        if timeframe.multiplier <= 5
+            res := "60"
+        else if timeframe.multiplier <= 30
+            res := "240"
+        else if timeframe.multiplier <= 240
+            res := "D"
+        else
+            res := "W"
+    else if timeframe.isdaily
+        res := "W"
+    else if timeframe.isweekly
+        res := "M"
+    res
+
+actual_htf = htf_mode == "Auto" ? get_auto_htf() : htf_custom
+htf_ema    = request.security(syminfo.tickerid, actual_htf, ta.ema(close, htf_ema_l)[1], lookahead=barmerge.lookahead_on)
+htf_bull   = close > htf_ema
+htf_bear   = close < htf_ema
+
+// ── Session ──
+in_london = not na(time(timeframe.period, london_sess, "UTC"))
+in_ny     = not na(time(timeframe.period, ny_sess,     "UTC"))
+in_session = in_london or in_ny
+session_ok = use_session_filter and timeframe.isintraday ? in_session : true
+
+// ── RSI ──
+rsi_val = ta.rsi(close, rsi_length)
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  5) LAYER 1: MARKET STRUCTURE — BOS / ChoCH       ║
+// ╚═══════════════════════════════════════════════════╝
+struct_ph = ta.pivothigh(high, struct_left, struct_right)
+struct_pl = ta.pivotlow(low,   struct_left, struct_right)
+
+var int   last_sh_bar = na
+var int   last_sl_bar = na
+
+if not na(struct_ph)
+    prev_sh    := last_sh
+    last_sh    := struct_ph
+    last_sh_bar := bar_index[struct_right]
+
+if not na(struct_pl)
+    prev_sl    := last_sl
+    last_sl    := struct_pl
+    last_sl_bar := bar_index[struct_right]
+
+// BOS: Break of Structure — price closes beyond the last swing
+bos_bull = not na(last_sh) and close > last_sh and close[1] <= last_sh
+bos_bear = not na(last_sl) and close < last_sl and close[1] >= last_sl
+
+// Track market structure
+var int prev_mkt_structure = 0
+if barstate.isconfirmed
+    prev_mkt_structure := mkt_structure
+    if bos_bull
+        mkt_structure := 1
+    if bos_bear
+        mkt_structure := -1
+
+// ChoCH: Change of Character — structure flips
+choch_bull = prev_mkt_structure == -1 and bos_bull
+choch_bear = prev_mkt_structure ==  1 and bos_bear
+
+// Plot BOS/ChoCH
+plotshape(show_structure and bos_bull and not choch_bull, title="BOS Bull", style=shape.triangleup,   location=location.belowbar, color=color.new(color.teal, 20),   size=size.tiny, text="BOS↑")
+plotshape(show_structure and bos_bear and not choch_bear, title="BOS Bear", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 20),    size=size.tiny, text="BOS↓")
+plotshape(show_structure and choch_bull,                  title="ChoCH Bull",style=shape.diamond,      location=location.belowbar, color=color.new(color.lime, 0),    size=size.small, text="ChoCH↑")
+plotshape(show_structure and choch_bear,                  title="ChoCH Bear",style=shape.diamond,      location=location.abovebar, color=color.new(color.orange, 0),  size=size.small, text="ChoCH↓")
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  6) LAYER 3: RSI DIVERGENCE (Correct impl)        ║
+// ╚═══════════════════════════════════════════════════╝
+rsi_pivot_low  = ta.pivotlow(rsi_val,  rsi_div_left, rsi_div_right)
+rsi_pivot_high = ta.pivothigh(rsi_val, rsi_div_left, rsi_div_right)
+
+bull_rsi_div = false
+bear_rsi_div = false
+
+if not na(rsi_pivot_low)
+    curr_rsi_low   = rsi_pivot_low
+    curr_price_low = low[rsi_div_right]
+    if not na(prev_rsi_low)
+        // Bullish Div: Price Lower Low, RSI Higher Low
+        if curr_price_low < prev_price_at_rsi_low and curr_rsi_low > prev_rsi_low
+            bull_rsi_div := true
+    prev_rsi_low            := curr_rsi_low
+    prev_price_at_rsi_low   := curr_price_low
+
+if not na(rsi_pivot_high)
+    curr_rsi_high   = rsi_pivot_high
+    curr_price_high = high[rsi_div_right]
+    if not na(prev_rsi_high)
+        // Bearish Div: Price Higher High, RSI Lower High
+        if curr_price_high > prev_price_at_rsi_high and curr_rsi_high < prev_rsi_high
+            bear_rsi_div := true
+    prev_rsi_high            := curr_rsi_high
+    prev_price_at_rsi_high   := curr_price_high
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  7) LAYER 3: CANDLESTICK PATTERNS                 ║
+// ╚═══════════════════════════════════════════════════╝
+body_size  = math.abs(close - open)
+is_bull_c  = close > open
+is_bear_c  = close < open
+avg_body   = ta.sma(body_size, 20)
+upper_wick = high - math.max(open, close)
+lower_wick = math.min(open, close) - low
+
+// Hammer (bullish reversal at demand zone)
+is_hammer = lower_wick >= body_size * 2
+     and upper_wick <= body_size * 0.5
+     and body_size > 0
+     and body_size >= avg_body * 0.25
+
+// Shooting Star (bearish reversal at supply zone)
+is_shooting_star = upper_wick >= body_size * 2
+     and lower_wick <= body_size * 0.5
+     and body_size > 0
+     and body_size >= avg_body * 0.25
+
+// Bullish Engulfing
+bull_engulf = is_bear_c[1] and is_bull_c
+     and close > open[1] and open <= close[1]
+     and body_size > math.abs(close[1] - open[1])
+
+// Bearish Engulfing
+bear_engulf = is_bull_c[1] and is_bear_c
+     and close < open[1] and open >= close[1]
+     and body_size > math.abs(close[1] - open[1])
+
+// Morning Star (3-candle bullish)
+morning_star = is_bear_c[2] and body_size[2] > avg_body
+     and body_size[1] < avg_body * 0.5
+     and is_bull_c and close > (open[2] + close[2]) / 2
+
+// Evening Star (3-candle bearish)
+evening_star = is_bull_c[2] and body_size[2] > avg_body
+     and body_size[1] < avg_body * 0.5
+     and is_bear_c and close < (open[2] + close[2]) / 2
+
+// Aggregate
+bullish_pattern = is_hammer or bull_engulf or morning_star
+bearish_pattern = is_shooting_star or bear_engulf or evening_star
+
+// Pattern name for label
+get_bull_pattern_name() =>
+    morning_star ? "Morning Star" : bull_engulf ? "Engulfing" : is_hammer ? "Hammer" : "Pattern"
+get_bear_pattern_name() =>
+    evening_star ? "Evening Star" : bear_engulf ? "Engulfing" : is_shooting_star ? "Shooting Star" : "Pattern"
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  8) ZONE ENGINE (kept from V4, optimized)         ║
+// ╚═══════════════════════════════════════════════════╝
+ph = ta.pivothigh(high, pivot_left, pivot_right)
+pl = ta.pivotlow(low,   pivot_left, pivot_right)
+
+// Reset per-bar
+buy_signal  := false
+sell_signal := false
+
+get_zone_half() =>
+    atr_val * atr_zone_mult
+
+zone_mid(float t, float b) =>
+    (t + b) * 0.5
+
+is_zone_dup(float t, float b, int ztype) =>
+    bool dup = false
+    mid = zone_mid(t, b)
+    thr = atr_val * min_zone_distance
+    if array.size(active_zones) > 0
+        for i = 0 to array.size(active_zones) - 1
+            z = array.get(active_zones, i)
+            if z.is_active and z.zone_type == ztype
+                if math.abs(mid - zone_mid(z.top, z.bottom)) <= thr
+                    dup := true
+                    break
+    dup
+
+create_zone(float pivot_price, int ztype) =>
+    hw     = get_zone_half()
+    z_top  = ztype == 1 ? pivot_price : pivot_price + hw
+    z_bot  = ztype == 1 ? pivot_price - hw : pivot_price
+    z_col  = ztype == 1 ? color.new(color.green, 82) : color.new(color.red, 82)
+    z_bdr  = ztype == 1 ? color.new(color.green, 20) : color.new(color.red, 20)
+    z_box  = box.new(left=time[pivot_right], top=z_top, right=time, bottom=z_bot,
+                 xloc=xloc.bar_time, bgcolor=z_col, border_color=z_bdr, border_style=line.style_dotted)
+    vol_bonus = volume[pivot_right] >= vol_ma * 1.5 ? 0.25 : 0.0
+    Zone.new(z_top, z_bot, bar_index[pivot_right], ztype, 0, 1.0 + vol_bonus, true, false, z_box)
+
+is_zone_touched(Zone z) => low <= z.top and high >= z.bottom
+is_zone_broken(Zone z)  => z.zone_type == 1 ? close < z.bottom : close > z.top
+
+fade_zone(Zone z) =>
+    if delete_invalidated
+        box.delete(z.box_id)
+    else
+        box.set_bgcolor(z.box_id, color.new(color.gray, 92))
+        box.set_border_color(z.box_id, color.new(color.gray, 60))
+
+can_add() => array.size(active_zones) < max_active_zones
+
+// Zone creation
+if not na(ph)
+    body_after = math.abs(close[pivot_right - 1] - open[pivot_right - 1])
+    is_imbal   = close[pivot_right - 1] < open[pivot_right - 1] and body_after > atr_val[pivot_right - 1] * 0.8
+    if not req_imbalance or is_imbal
+        hw = get_zone_half()
+        if can_add() and not is_zone_dup(ph + hw, ph, -1)
+            array.push(active_zones, create_zone(ph, -1))
+
+if not na(pl)
+    body_after = math.abs(close[pivot_right - 1] - open[pivot_right - 1])
+    is_imbal   = close[pivot_right - 1] > open[pivot_right - 1] and body_after > atr_val[pivot_right - 1] * 0.8
+    if not req_imbalance or is_imbal
+        hw = get_zone_half()
+        if can_add() and not is_zone_dup(pl, pl - hw, 1)
+            array.push(active_zones, create_zone(pl, 1))
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  9) 3-LAYER CONFLUENCE SCORING                    ║
+// ╚═══════════════════════════════════════════════════╝
+buy_confluence(Zone z) =>
+    float s = 0.0
+    // Layer 1: Context (max 4.0)
+    s += is_uptrend ? 1.0 : 0.0                              // EMA regime
+    s += mkt_structure == 1 ? 1.5 : mkt_structure == 0 ? 0.5 : 0.0  // BOS/ChoCH
+    s += (use_mtf ? htf_bull : true) ? 1.0 : 0.0             // HTF alignment
+    s += session_ok ? 0.5 : 0.0                               // Session
+
+    // Layer 2: Zone quality (max 2.0)
+    s += z.touch_count <= 1 ? 1.0 : z.touch_count == 2 ? 0.5 : 0.0  // Freshness
+    s += z.strength_score >= 1.0 ? 1.0 : z.strength_score * 1.0     // Strength
+
+    // Layer 3: Trigger (max 4.0)
+    s += bullish_pattern ? 2.0 : 0.0                          // Candlestick pattern
+    s += bull_rsi_div ? 1.5 : 0.0                             // RSI Divergence
+    s += (use_vol_filter and vol_surge) ? 0.5 : 0.0           // Volume bonus
+    s
+
+sell_confluence(Zone z) =>
+    float s = 0.0
+    // Layer 1: Context (max 4.0)
+    s += is_downtrend ? 1.0 : 0.0
+    s += mkt_structure == -1 ? 1.5 : mkt_structure == 0 ? 0.5 : 0.0
+    s += (use_mtf ? htf_bear : true) ? 1.0 : 0.0
+    s += session_ok ? 0.5 : 0.0
+
+    // Layer 2: Zone quality (max 2.0)
+    s += z.touch_count <= 1 ? 1.0 : z.touch_count == 2 ? 0.5 : 0.0
+    s += z.strength_score >= 1.0 ? 1.0 : z.strength_score * 1.0
+
+    // Layer 3: Trigger (max 4.0)
+    s += bearish_pattern ? 2.0 : 0.0
+    s += bear_rsi_div ? 1.5 : 0.0
+    s += (use_vol_filter and vol_surge) ? 0.5 : 0.0
+    s
+
+score_label(float sc) =>
+    sc >= 7.0 ? "STRONG ⭐⭐⭐" : sc >= 5.0 ? "MEDIUM ⭐⭐" : sc >= 4.0 ? "WEAK ⭐" : "—"
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  10) ZONE MANAGER + SIGNAL ENGINE                 ║
+// ╚═══════════════════════════════════════════════════╝
+var float last_buy_sl  = na
+var float last_buy_tp1 = na
+var float last_buy_tp2 = na
+var float last_sell_sl  = na
+var float last_sell_tp1 = na
+var float last_sell_tp2 = na
+
+if barstate.isconfirmed and array.size(active_zones) > 0
+    for i = array.size(active_zones) - 1 to 0
+        z = array.get(active_zones, i)
+        box.set_right(z.box_id, time)
+
+        if is_zone_touched(z)
+            z.touch_count += 1
+            decay = z.touch_count > 2 ? 0.25 : 0.15
+            z.strength_score := math.max(0.0, z.strength_score - decay)
+
+        if is_zone_broken(z)
+            z.is_active := false
+            fade_zone(z)
+            array.remove(active_zones, i)
+        else
+            if not z.is_triggered
+                // ── BUY CHECK ──
+                is_in_demand = z.zone_type == 1 and is_zone_touched(z)
+                touch_ok     = first_touch_only ? z.touch_count <= 1 : true
+                b_score      = buy_confluence(z)
+                buy_ok       = is_in_demand and touch_ok and bullish_pattern and b_score >= min_score
+
+                if buy_ok
+                    z.is_triggered := true
+                    buy_signal     := true
+
+                    buy_sl  = close - atr_val * sl_atr_mult
+                    buy_tp1 = close + (close - buy_sl) * rr_ratio_1
+                    buy_tp2 = close + (close - buy_sl) * rr_ratio_2
+                    last_buy_sl  := buy_sl
+                    last_buy_tp1 := buy_tp1
+                    last_buy_tp2 := buy_tp2
+
+                    risk_amt = account_bal * (risk_pct / 100.0)
+                    dist     = math.abs(close - buy_sl)
+                    units    = is_forex ? (risk_amt / (dist * 100000)) : (risk_amt / dist)
+                    u_label  = is_forex ? "Lot" : "Units"
+
+                    pattern_name = get_bull_pattern_name()
+                    strength     = score_label(b_score)
+
+                    if label_signals
+                        txt = "MUA " + strength + "\n" + pattern_name + "\n" + u_label + ": " + str.tostring(units, "#.##") + "\nEntry: " + str.tostring(close, format.mintick) + "\nScore: " + str.tostring(b_score, "#.#") + "/10"
+                        label.new(bar_index, low, txt, color=color.new(color.green, 10), style=label.style_label_up, textcolor=color.white, size=size.small)
+
+                    if show_sl_tp
+                        line.new(bar_index, buy_sl,  bar_index + future_sessions, buy_sl,  color=color.new(color.red, 20),    width=1, style=line.style_dashed)
+                        line.new(bar_index, buy_tp1, bar_index + future_sessions, buy_tp1, color=color.new(color.orange, 20), width=1, style=line.style_dashed)
+                        line.new(bar_index, buy_tp2, bar_index + future_sessions, buy_tp2, color=color.new(color.green, 20),  width=1, style=line.style_dashed)
+                        label.new(bar_index + future_sessions, buy_sl,  "SL "  + str.tostring(buy_sl,  format.mintick), color=color.new(color.red, 20),    style=label.style_label_left, textcolor=color.white, size=size.tiny)
+                        label.new(bar_index + future_sessions, buy_tp1, "TP1 " + str.tostring(buy_tp1, format.mintick), color=color.new(color.orange, 20), style=label.style_label_left, textcolor=color.white, size=size.tiny)
+                        label.new(bar_index + future_sessions, buy_tp2, "TP2 " + str.tostring(buy_tp2, format.mintick), color=color.new(color.green, 20),  style=label.style_label_left, textcolor=color.white, size=size.tiny)
+
+                    json_msg = '{"action":"BUY","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"sl":' + str.tostring(buy_sl) + ',"tp1":' + str.tostring(buy_tp1) + ',"tp2":' + str.tostring(buy_tp2) + ',"size":' + str.tostring(units) + ',"score":' + str.tostring(b_score) + '}'
+                    alert(json_msg, alert.freq_once_per_bar_close)
+
+                // ── SELL CHECK ──
+                is_in_supply = z.zone_type == -1 and is_zone_touched(z)
+                touch_ok_s   = first_touch_only ? z.touch_count <= 1 : true
+                s_score      = sell_confluence(z)
+                sell_ok      = is_in_supply and touch_ok_s and bearish_pattern and s_score >= min_score
+
+                if sell_ok
+                    z.is_triggered := true
+                    sell_signal    := true
+
+                    sell_sl  = close + atr_val * sl_atr_mult
+                    sell_tp1 = close - (sell_sl - close) * rr_ratio_1
+                    sell_tp2 = close - (sell_sl - close) * rr_ratio_2
+                    last_sell_sl  := sell_sl
+                    last_sell_tp1 := sell_tp1
+                    last_sell_tp2 := sell_tp2
+
+                    risk_amt = account_bal * (risk_pct / 100.0)
+                    dist     = math.abs(sell_sl - close)
+                    units    = is_forex ? (risk_amt / (dist * 100000)) : (risk_amt / dist)
+                    u_label  = is_forex ? "Lot" : "Units"
+
+                    pattern_name = get_bear_pattern_name()
+                    strength     = score_label(s_score)
+
+                    if label_signals
+                        txt = "BÁN " + strength + "\n" + pattern_name + "\n" + u_label + ": " + str.tostring(units, "#.##") + "\nEntry: " + str.tostring(close, format.mintick) + "\nScore: " + str.tostring(s_score, "#.#") + "/10"
+                        label.new(bar_index, high, txt, color=color.new(color.red, 10), style=label.style_label_down, textcolor=color.white, size=size.small)
+
+                    if show_sl_tp
+                        line.new(bar_index, sell_sl,  bar_index + future_sessions, sell_sl,  color=color.new(color.red, 20),    width=1, style=line.style_dashed)
+                        line.new(bar_index, sell_tp1, bar_index + future_sessions, sell_tp1, color=color.new(color.orange, 20), width=1, style=line.style_dashed)
+                        line.new(bar_index, sell_tp2, bar_index + future_sessions, sell_tp2, color=color.new(color.green, 20),  width=1, style=line.style_dashed)
+                        label.new(bar_index + future_sessions, sell_sl,  "SL "  + str.tostring(sell_sl,  format.mintick), color=color.new(color.red, 20),    style=label.style_label_left, textcolor=color.white, size=size.tiny)
+                        label.new(bar_index + future_sessions, sell_tp1, "TP1 " + str.tostring(sell_tp1, format.mintick), color=color.new(color.orange, 20), style=label.style_label_left, textcolor=color.white, size=size.tiny)
+                        label.new(bar_index + future_sessions, sell_tp2, "TP2 " + str.tostring(sell_tp2, format.mintick), color=color.new(color.green, 20),  style=label.style_label_left, textcolor=color.white, size=size.tiny)
+
+                    json_msg = '{"action":"SELL","symbol":"' + syminfo.ticker + '","price":' + str.tostring(close) + ',"sl":' + str.tostring(sell_sl) + ',"tp1":' + str.tostring(sell_tp1) + ',"tp2":' + str.tostring(sell_tp2) + ',"size":' + str.tostring(units) + ',"score":' + str.tostring(s_score) + '}'
+                    alert(json_msg, alert.freq_once_per_bar_close)
+
+            array.set(active_zones, i, z)
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  11) WIN-RATE ENGINE (FIXED — per-bar SL check)   ║
+// ╚═══════════════════════════════════════════════════╝
+if barstate.isconfirmed
+    // Record new signals
+    if buy_signal
+        array.push(wr_bars,   bar_index)
+        array.push(wr_prices, close)
+        array.push(wr_sls,    close - atr_val * sl_atr_mult)
+        array.push(wr_dirs,   1)
+        array.push(wr_sl_hit, false)
+    else if sell_signal
+        array.push(wr_bars,   bar_index)
+        array.push(wr_prices, close)
+        array.push(wr_sls,    close + atr_val * sl_atr_mult)
+        array.push(wr_dirs,   -1)
+        array.push(wr_sl_hit, false)
+
+    // Evaluate open trades — per-bar SL check (NO lookahead)
+    if array.size(wr_bars) > 0
+        for j = array.size(wr_bars) - 1 to 0
+            sig_bar   = array.get(wr_bars, j)
+            sig_price = array.get(wr_prices, j)
+            sig_sl    = array.get(wr_sls, j)
+            sig_dir   = array.get(wr_dirs, j)
+            sl_already = array.get(wr_sl_hit, j)
+            bars_passed = bar_index - sig_bar
+
+            if bars_passed >= 1 and not sl_already
+                // Check if THIS bar hit SL
+                if sig_dir == 1 and low <= sig_sl
+                    array.set(wr_sl_hit, j, true)
+                if sig_dir == -1 and high >= sig_sl
+                    array.set(wr_sl_hit, j, true)
+
+            // After N bars, evaluate result
+            if bars_passed >= future_sessions
+                was_sl_hit = array.get(wr_sl_hit, j)
+                won = false
+                if not was_sl_hit
+                    won := sig_dir == 1 ? close > sig_price : close < sig_price
+
+                if sig_dir == 1
+                    buy_total := buy_total + 1
+                    buy_wins  := won ? buy_wins + 1 : buy_wins
+                else
+                    sell_total := sell_total + 1
+                    sell_wins  := won ? sell_wins + 1 : sell_wins
+
+                array.remove(wr_bars,   j)
+                array.remove(wr_prices, j)
+                array.remove(wr_sls,    j)
+                array.remove(wr_dirs,   j)
+                array.remove(wr_sl_hit, j)
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  12) VISUAL: TREND BACKGROUND                     ║
+// ╚═══════════════════════════════════════════════════╝
+bg_col = show_trend_bg ? (mkt_structure == 1 ? color.new(color.teal, 93) : mkt_structure == -1 ? color.new(color.red, 93) : na) : na
+bgcolor(bg_col, title="Structure BG")
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  13) ALERTS                                       ║
+// ╚═══════════════════════════════════════════════════╝
+alertcondition(buy_signal,  title="MUA tại Demand",  message="BUY Signal | {{ticker}} | {{interval}} | {{close}}")
+alertcondition(sell_signal, title="BÁN tại Supply",  message="SELL Signal | {{ticker}} | {{interval}} | {{close}}")
+alertcondition(choch_bull,  title="ChoCH Bullish",   message="ChoCH ↑ | {{ticker}} | {{interval}}")
+alertcondition(choch_bear,  title="ChoCH Bearish",   message="ChoCH ↓ | {{ticker}} | {{interval}}")
+alertcondition(bb_squeeze,  title="BB Squeeze",      message="Bollinger Squeeze — Breakout sắp xảy ra | {{ticker}}")
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  14) DASHBOARD — PROBABILITY PANEL                ║
+// ╚═══════════════════════════════════════════════════╝
+var table dash = table.new(position.top_right, 2, 10, border_width=1)
+
+if barstate.islast and show_dashboard
+    // Row 0: Session
+    sess_str = not timeframe.isintraday ? "N/A (Khung Lớn)" : (in_london and in_ny ? "London+NY ✓" : in_london ? "London ✓" : in_ny ? "New York ✓" : "Ngoài Phiên ✗")
+    sess_col = not timeframe.isintraday ? color.new(color.gray, 50) : (in_session ? color.new(color.green, 20) : color.new(color.gray, 50))
+    table.cell(dash, 0, 0, "Phiên",           bgcolor=color.black, text_color=color.white)
+    table.cell(dash, 1, 0, sess_str,           bgcolor=sess_col,    text_color=color.white)
+
+    // Row 1: HTF Trend
+    htf_str = htf_bull ? "▲ TĂNG (" + actual_htf + ")" : htf_bear ? "▼ GIẢM (" + actual_htf + ")" : "—"
+    htf_col = htf_bull ? color.new(color.green, 20) : htf_bear ? color.new(color.red, 20) : color.gray
+    table.cell(dash, 0, 1, "Xu Hướng Vĩ Mô",  bgcolor=color.black, text_color=color.white)
+    table.cell(dash, 1, 1, htf_str,             bgcolor=htf_col,     text_color=color.white)
+
+    // Row 2: EMA Regime
+    regime_str = is_uptrend ? "▲ BULL" : is_downtrend ? "▼ BEAR" : "— SIDEWAY"
+    regime_col = is_uptrend ? color.new(color.green, 20) : is_downtrend ? color.new(color.red, 20) : color.gray
+    table.cell(dash, 0, 2, "EMA " + str.tostring(ema_length), bgcolor=color.black, text_color=color.white)
+    table.cell(dash, 1, 2, regime_str,          bgcolor=regime_col,  text_color=color.white)
+
+    // Row 3: Market Structure
+    struct_str = mkt_structure == 1 ? "▲ Bullish" : mkt_structure == -1 ? "▼ Bearish" : "— Undefined"
+    struct_col = mkt_structure == 1 ? color.new(color.teal, 20) : mkt_structure == -1 ? color.new(color.red, 20) : color.gray
+    table.cell(dash, 0, 3, "Cấu Trúc (BOS)",  bgcolor=color.black, text_color=color.white)
+    table.cell(dash, 1, 3, struct_str,          bgcolor=struct_col,  text_color=color.white)
+
+    // Row 4: RSI
+    rsi_str = rsi_val <= 30 ? "Quá Bán " + str.tostring(math.round(rsi_val, 1)) : rsi_val >= 70 ? "Quá Mua " + str.tostring(math.round(rsi_val, 1)) : str.tostring(math.round(rsi_val, 1))
+    rsi_col = rsi_val <= 30 ? color.new(color.green, 20) : rsi_val >= 70 ? color.new(color.red, 20) : color.new(color.gray, 30)
+    table.cell(dash, 0, 4, "RSI",              bgcolor=color.black, text_color=color.white)
+    table.cell(dash, 1, 4, rsi_str,             bgcolor=rsi_col,     text_color=color.white)
+
+    // Row 5: RSI Divergence
+    div_str = bull_rsi_div ? "▲ Phân Kỳ Tăng" : bear_rsi_div ? "▼ Phân Kỳ Giảm" : "Không có"
+    div_col = bull_rsi_div ? color.new(color.green, 20) : bear_rsi_div ? color.new(color.red, 20) : color.new(color.gray, 50)
+    table.cell(dash, 0, 5, "RSI Divergence",   bgcolor=color.black, text_color=color.white)
+    table.cell(dash, 1, 5, div_str,             bgcolor=div_col,     text_color=color.white)
+
+    // Row 6: BB Position
+    bb_pct = (bb_upper - bb_lower) == 0 ? 50.0 : (close - bb_lower) / (bb_upper - bb_lower) * 100
+    bb_str = bb_squeeze ? "⚡ SQUEEZE" : bb_pct <= 20 ? "Đáy (" + str.tostring(math.round(bb_pct, 0)) + "%)" : bb_pct >= 80 ? "Đỉnh (" + str.tostring(math.round(bb_pct, 0)) + "%)" : str.tostring(math.round(bb_pct, 0)) + "%"
+    bb_col = bb_squeeze ? color.new(color.yellow, 10) : bb_pct <= 20 ? color.new(color.green, 20) : bb_pct >= 80 ? color.new(color.red, 20) : color.new(color.gray, 30)
+    table.cell(dash, 0, 6, "Bollinger",        bgcolor=color.black, text_color=color.white)
+    table.cell(dash, 1, 6, bb_str,              bgcolor=bb_col,      text_color=color.white)
+
+    // Row 7: Volume
+    vol_ratio = vol_ma > 0 ? volume / vol_ma : 0.0
+    vol_str   = str.tostring(math.round(vol_ratio * 100) / 100, "#.##") + "x" + (vol_surge ? " 🔥" : "")
+    vol_col   = vol_surge ? color.new(color.green, 20) : color.new(color.gray, 40)
+    table.cell(dash, 0, 7, "Volume",           bgcolor=color.black, text_color=color.white)
+    table.cell(dash, 1, 7, vol_str,             bgcolor=vol_col,     text_color=color.white)
+
+    // Row 8: Active Zones
+    table.cell(dash, 0, 8, "Zones Hoạt Động", bgcolor=color.black,  text_color=color.white)
+    table.cell(dash, 1, 8, str.tostring(array.size(active_zones)),    bgcolor=color.new(color.blue, 30), text_color=color.white)
+
+    // Row 9: Win-Rate (FIXED)
+    total_t = buy_total + sell_total
+    total_w = buy_wins + sell_wins
+    wr_pct  = total_t >= winrate_min_samples ? math.round((total_w / total_t) * 100) : -1
+    wr_str  = wr_pct >= 0 ? str.tostring(wr_pct) + "% (" + str.tostring(total_w) + "/" + str.tostring(total_t) + ")" : "Đang đo..."
+    wr_col  = wr_pct >= 60 ? color.new(color.lime, 20) : wr_pct >= 45 ? color.new(color.yellow, 20) : wr_pct >= 0 ? color.new(color.red, 20) : color.gray
+    table.cell(dash, 0, 9, "Win-Rate",         bgcolor=color.black,  text_color=color.white)
+    table.cell(dash, 1, 9, wr_str,              bgcolor=wr_col,       text_color=color.black)
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  15) PROBABILITY ASSESSMENT (barstate.islast)     ║
+// ╚═══════════════════════════════════════════════════╝
+var table prob_table = table.new(position.bottom_right, 2, 5, border_width=1)
+
+if barstate.islast and show_dashboard
+    // Calculate probability based on confluence of current conditions
+    float bull_prob = 50.0
+    float bear_prob = 50.0
+
+    // Context shifts
+    bull_prob += is_uptrend ? 5.0 : -5.0
+    bull_prob += mkt_structure == 1 ? 8.0 : mkt_structure == -1 ? -8.0 : 0.0
+    bull_prob += (use_mtf and htf_bull) ? 5.0 : (use_mtf and htf_bear) ? -5.0 : 0.0
+
+    // Recent signals
+    bull_prob += bull_rsi_div ? 6.0 : bear_rsi_div ? -6.0 : 0.0
+    bull_prob += choch_bull ? 7.0 : choch_bear ? -7.0 : 0.0
+
+    // Extremes
+    bb_pct_calc = (bb_upper - bb_lower) == 0 ? 50.0 : (close - bb_lower) / (bb_upper - bb_lower) * 100
+    bull_prob += bb_pct_calc <= 15 ? 4.0 : bb_pct_calc >= 85 ? -4.0 : 0.0
+    bull_prob += rsi_val <= 25 ? 3.0 : rsi_val >= 75 ? -3.0 : 0.0
+
+    // Win-rate adjustment
+    total_tr = buy_total + sell_total
+    total_wr = buy_wins + sell_wins
+    if total_tr >= winrate_min_samples
+        hist_wr = total_wr / total_tr * 100
+        bull_prob += (hist_wr - 50) * 0.15  // Subtle historical adjustment
+
+    // Clamp
+    bull_prob := math.min(88.0, math.max(12.0, bull_prob))
+    bear_prob := 100.0 - bull_prob
+
+    // Strength
+    strength_str = math.abs(bull_prob - 50) >= 20 ? "STRONG" : math.abs(bull_prob - 50) >= 10 ? "MEDIUM" : "WEAK"
+    direction_str = bull_prob > 55 ? "▲ TĂNG" : bull_prob < 45 ? "▼ GIẢM" : "↔ SIDEWAY"
+    dir_col = bull_prob > 55 ? color.new(color.green, 15) : bull_prob < 45 ? color.new(color.red, 15) : color.new(color.gray, 20)
+
+    table.cell(prob_table, 0, 0, "📊 XÁC SUẤT",        bgcolor=color.new(color.black, 0), text_color=color.white)
+    table.cell(prob_table, 1, 0, str.tostring(future_sessions) + " nến tới",  bgcolor=color.new(color.black, 0), text_color=color.gray)
+
+    table.cell(prob_table, 0, 1, "Kịch bản",            bgcolor=color.new(color.black, 0), text_color=color.white)
+    table.cell(prob_table, 1, 1, direction_str,          bgcolor=dir_col, text_color=color.white)
+
+    table.cell(prob_table, 0, 2, "Xác suất Tăng",       bgcolor=color.new(color.black, 0), text_color=color.white)
+    table.cell(prob_table, 1, 2, str.tostring(math.round(bull_prob)) + "%", bgcolor=bull_prob > 55 ? color.new(color.green, 25) : color.new(color.gray, 40), text_color=color.white)
+
+    table.cell(prob_table, 0, 3, "Xác suất Giảm",       bgcolor=color.new(color.black, 0), text_color=color.white)
+    table.cell(prob_table, 1, 3, str.tostring(math.round(bear_prob)) + "%", bgcolor=bear_prob > 55 ? color.new(color.red, 25) : color.new(color.gray, 40), text_color=color.white)
+
+    table.cell(prob_table, 0, 4, "Độ mạnh",             bgcolor=color.new(color.black, 0), text_color=color.white)
+    strength_col = strength_str == "STRONG" ? color.new(color.lime, 15) : strength_str == "MEDIUM" ? color.new(color.yellow, 20) : color.new(color.gray, 30)
+    table.cell(prob_table, 1, 4, strength_str,           bgcolor=strength_col, text_color=color.black)

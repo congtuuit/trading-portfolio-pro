@@ -1559,3 +1559,110 @@ export function renderDeepResearch(data, root = document) {
     </div>
   `;
 }
+
+// ── Phase 2: Caught Signals UI ──
+
+export function renderCaughtSignals(signals, root = document) {
+  const container = root.querySelector("#caught-signals-list");
+  if (!container) return;
+
+  if (!signals || signals.length === 0) {
+    container.innerHTML = `<div class="empty-state">Đang chờ tín hiệu từ TradingView...</div>`;
+    return;
+  }
+
+  container.innerHTML = signals.map((sig, idx) => {
+    const timeStr = sig.timestamp ? new Date(sig.timestamp).toLocaleTimeString() : "";
+    const isBuy = sig.action === "BUY";
+    const typeClass = isBuy ? "badge-buy" : "badge-sell";
+    const actionText = isBuy ? "MUA" : "BÁN";
+    const symbol = sig.symbol || "UNKNOWN";
+    
+    // Tính toán Risk/Reward đơn giản
+    const risk = Math.abs(sig.price - (sig.sl || sig.price));
+    const reward = Math.abs((sig.tp1 || sig.price) - sig.price);
+    const rr = risk > 0 ? (reward / risk).toFixed(1) : "N/A";
+    const scoreStars = sig.score ? "⭐".repeat(Math.round(sig.score)) : "";
+
+    return `
+      <div class="scanner-card" style="border-left: 3px solid ${isBuy ? 'var(--profit)' : 'var(--loss)'}; padding: 12px; margin-bottom: 8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="badge ${typeClass}">${actionText}</span>
+            <strong style="font-size:14px;">${symbol}</strong>
+            <span style="font-size:10px; color:var(--text-muted);">${timeStr}</span>
+          </div>
+          <div style="font-size:10px;">${scoreStars}</div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; margin-bottom:8px; background:rgba(255,255,255,0.02); padding:8px; border-radius:4px;">
+          <div><span style="color:var(--text-muted);">Giá báo:</span> <strong style="font-size:12px;">${fmt(sig.price)}</strong></div>
+          <div><span style="color:var(--text-muted);">Vị thế (Size):</span> <strong>${fmt(sig.size || 0)}</strong></div>
+          <div><span style="color:var(--text-muted);">Cắt lỗ (SL):</span> <strong style="color:var(--loss);">${sig.sl ? fmt(sig.sl) : 'N/A'}</strong></div>
+          <div><span style="color:var(--text-muted);">Chốt lời (TP1):</span> <strong style="color:var(--profit);">${sig.tp1 ? fmt(sig.tp1) : 'N/A'}</strong></div>
+        </div>
+        
+        <!-- Risk Calculator (Inline) -->
+        <div style="background:var(--bg-input); padding:8px; border-radius:4px; margin-bottom:8px; border:1px solid var(--border);">
+           <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">Mô phỏng vốn rủi ro (Risk Calculator):</div>
+           <div style="display:flex; gap:6px; align-items:center;">
+             <input type="number" class="inp-sim-risk full-width" placeholder="VD: Rủi ro 500,000đ" style="padding:4px 8px; font-size:11px;" />
+             <button class="btn btn-calc-risk" data-risk="${risk}" style="background:var(--bg-hover); color:var(--text-primary); padding:4px 8px; font-size:11px; white-space:nowrap;">Tính Khối Lượng</button>
+           </div>
+           <div class="res-calc-risk" style="font-size:11px; margin-top:6px; color:var(--profit); font-weight:bold; display:none;"></div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 4px;">
+          <div style="font-size:10px;">
+            <span style="color:var(--text-muted);">Tỷ lệ R:R = </span> <strong>1 : ${rr}</strong>
+          </div>
+          <button class="btn btn-add-signal" data-idx="${idx}" style="background:linear-gradient(90deg, #1A73E8, #8E24AA); color:white; padding:4px 12px; font-size:11px; border-radius:4px;">Nhập Danh Mục ➕</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+export function bindCaughtSignalEvents(getLatestSignals, onSaveToPortfolio, onClearSignals, root = document) {
+  const container = root.querySelector("#caught-signals-list");
+  if (container) {
+    container.addEventListener("click", (e) => {
+      // 1. Add to Portfolio
+      const btnAdd = e.target.closest(".btn-add-signal");
+      if (btnAdd) {
+        const idx = btnAdd.dataset.idx;
+        const sig = getLatestSignals()[idx];
+        if (sig && onSaveToPortfolio) {
+          onSaveToPortfolio(sig);
+        }
+        return;
+      }
+      
+      // 2. Calculate Risk
+      const btnCalc = e.target.closest(".btn-calc-risk");
+      if (btnCalc) {
+        const card = btnCalc.closest(".scanner-card");
+        const inp = card.querySelector(".inp-sim-risk");
+        const resDiv = card.querySelector(".res-calc-risk");
+        const riskPerShare = parseFloat(btnCalc.dataset.risk);
+        const totalRisk = parseFloat(inp.value);
+        if (totalRisk > 0 && riskPerShare > 0) {
+           const qty = Math.floor(totalRisk / riskPerShare);
+           resDiv.innerHTML = `Khối lượng mua tối đa: <span style="font-size:13px;">${qty}</span> cổ phiếu.`;
+           resDiv.style.display = "block";
+        } else {
+           resDiv.innerHTML = "Vui lòng nhập số tiền rủi ro hợp lệ (VD: 500000).";
+           resDiv.style.display = "block";
+        }
+      }
+    });
+  }
+
+  const btnClear = root.querySelector("#btn-clear-signals");
+  if (btnClear) {
+    btnClear.addEventListener("click", () => {
+      if (confirm("Xóa toàn bộ tín hiệu đã bắt?")) {
+        if (onClearSignals) onClearSignals();
+      }
+    });
+  }
+}
