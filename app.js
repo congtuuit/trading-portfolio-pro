@@ -15,6 +15,8 @@ import {
   getRawScannerResults,
   saveRawScannerResults,
   clearAllScannerData,
+  saveRankedResults,
+  getRankedResults,
   getAdviceCache,
   saveAdviceCache,
   clearAdviceCache,
@@ -40,6 +42,7 @@ import {
 import { fetchPricesMap, fetchDeepResearchData } from "./price.js";
 import { queryAI, fetchModels, screenPotentialStocks, getDetailedAdvice, analyzeDeepStock } from "./ai.js";
 import { prepareDataForAI } from "./scanner_data.js";
+import { rankStocks } from "./scorer.js";
 
 const REFRESH_INTERVAL_MS = 30 * 1000;
 
@@ -218,15 +221,21 @@ export async function initApp(root) {
       if (res && res.success) {
         lastScannedData = res.data;
         saveRawScannerResults(res.data);
-        renderScannerResults(res.data, root, Date.now(), "#scanner-raw-results");
-        if (res.data.length > 0) btnAI.style.display = "block";
+
+        // Auto-rank all stocks with score + grade immediately
+        const ranked = rankStocks(lastScannedData, appSettings, 50);
+        lastScannedData = ranked;
+        saveRankedResults(ranked); // Persist to storage
+
+        renderScannerResults(ranked, root, Date.now(), "#scanner-raw-results");
+        if (ranked.length > 0) btnAI.style.display = "block";
       } else {
         container.innerHTML = `<div class="empty-state">❌ Lỗi: ${res?.error || "Unknown"}</div>`;
       }
     });
   }
 
-  async function handleAIAnalyze(targetProfit) {
+  async function handleAIAnalyze() {
     const aiContainer = root.querySelector("#scanner-ai-results");
     const aiSection = root.querySelector("#ai-top-picks");
     aiSection.style.display = "block";
@@ -237,10 +246,10 @@ export async function initApp(root) {
       </div>`;
     
     try {
-      const cleanedData = prepareDataForAI(lastScannedData);
-      const aiResults = await screenPotentialStocks(cleanedData, targetProfit, appSettings);
-      
-      const minRR = parseFloat(root.querySelector("#inp-min-rr")?.value || 0);
+      // Pre-rank stocks using scorer.js before sending to AI
+      const ranked = rankStocks(lastScannedData, appSettings, 25);
+      const cleanedData = prepareDataForAI(ranked);
+      const aiResults = await screenPotentialStocks(cleanedData, 0, appSettings);
 
       const finalResults = aiResults.map(ai => {
         const raw = lastScannedData.find(r => (r.symbol || "").toUpperCase() === ai.s.toUpperCase());
@@ -357,13 +366,21 @@ export async function initApp(root) {
   tradeHistory = await getTradeHistory();
   const scannerCache = await getScannerResults();
   const rawCache = await getRawScannerResults();
+  const rankedCache = await getRankedResults();
 
   renderHistory(tradeHistory, root);
 
-  // Khôi phục dữ liệu Quét Gốc
-  if (rawCache.length > 0) {
-    lastScannedData = rawCache;
-    renderScannerResults(rawCache, root, null, "#scanner-raw-results");
+  // Khôi phục dữ liệu đã xếp hạng (ưu tiên > raw)
+  if (rankedCache.length > 0) {
+    lastScannedData = rankedCache;
+    renderScannerResults(rankedCache, root, null, "#scanner-raw-results");
+    root.querySelector("#btn-ai-analyze").style.display = "block";
+  } else if (rawCache.length > 0) {
+    // Fallback: nếu chưa có ranked, rank từ raw rồi lưu lại
+    const ranked = rankStocks(rawCache, appSettings, 50);
+    lastScannedData = ranked;
+    saveRankedResults(ranked);
+    renderScannerResults(ranked, root, null, "#scanner-raw-results");
     root.querySelector("#btn-ai-analyze").style.display = "block";
   }
 

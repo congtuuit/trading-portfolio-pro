@@ -46,7 +46,18 @@ export async function queryAI(inputData, settings) {
  */
 export async function screenPotentialStocks(rawStocks, targetProfit, settings) {
   try {
-    // 1. Giảm payload để tránh AI bị quá tải token
+    // 1. Inject user profile into the prompt
+    const profile = {
+      trading_style: settings.tradingStyle || "swing",
+      risk_level: settings.riskLevel || "trung bình"
+    };
+
+    const styleLabel = profile.trading_style === "lướt sóng" ? "LƯỚT SÓNG (Scalping, T+0 ~ T+3)" :
+      profile.trading_style === "swing" ? "SWING (Ngắn hạn, T+3 ~ T+10)" : "ĐẦU TƯ DÀI HẠN (Position, T+20 trở lên)";
+    const riskLabel = profile.risk_level === "cao" ? "CHẤP NHẬN RỦI RO CAO (ưu tiên lợi nhuận, chấp nhận biến động mạnh)" :
+      profile.risk_level === "thấp" ? "AN TOÀN (ưu tiên bảo toàn vốn)" : "TRUNG BÌNH (cân bằng rủi ro-lợi nhuận)";
+
+    // 2. Build compact but enriched data
     const compactData = rawStocks.map(s => ({
       s: s.s,
       p: s.p,
@@ -54,46 +65,33 @@ export async function screenPotentialStocks(rawStocks, targetProfit, settings) {
       v: s.v,
       rsi: s.rsi,
       atr: s.atr,
-      m: s.m
+      e20: s.e20,
+      e50: s.e50,
+      e200: s.e200,
+      bl: s.bl,
+      bu: s.bu,
+      m: s.m,
+      vr: s.vr,
+      sc: s.sc,
+      g: s.g
     }));
 
     const cleanedData = JSON.stringify(compactData);
 
-    const prompt = `Dữ liệu cổ phiếu (JSON):
+    const prompt = `CHỌN 8 CP TỐT NHẤT từ dữ liệu đã chấm điểm:
 ${cleanedData}
 
-Nhiệm vụ: Tìm ra Top 10 cổ phiếu có thiết lập Swing Trade (lướt sóng) đẹp nhất dựa trên Price Action.
+Hồ sơ NĐT: ${styleLabel} | ${riskLabel}
 
-Tiêu chí lọc:
-1. Xu hướng: Chỉ chọn cổ phiếu có xu hướng Tăng hoặc Đang tích lũy nền chặt chẽ trên D1.
-2. Price Action & Patterns:
-   - Ưu tiên: Mẫu hình Cốc tay cầm, VCP, Nền giá phẳng (Flat Base), hoặc Breakout kháng cự với Vol lớn.
-   - Nến: Tìm kiếm các dấu hiệu đảo chiều/tiếp diễn như Pinbar, Engulfing tại các vùng hỗ trợ mạnh.
-3. Thanh khoản: Volume trung bình 10 phiên >= 1 triệu cổ (để đảm bảo thoát hàng dễ).
-4. Tỷ lệ Risk/Reward: Bắt buộc >= 1:2.
+Yêu cầu: Phân tích kỹ thuật (xu hướng EMA, động lượng RSI/MACD, volume) để chọn CP phù hợp nhất với hồ sơ trên.
+- Lướt sóng: RSI 50-70, volume đột biến, giá>EMA20, R:R>=1.5
+- Swing: giá>EMA20>EMA50, MACD tăng, volume ổn định, R:R>=2
+- Dài hạn: giá>EMA200, vào tại BB lower/EMA50, R:R>=2
 
-Yêu cầu trả về (Chọn 1 trong 2 định dạng dưới đây):
-ĐỊNH DẠNG 1 (MẢNG JSON - Khuyên dùng):
-Một mảng JSON chứa danh sách đối tượng:
-[
-  {
-    "s": "Mã",
-    "r": "Lý do",
-    "sc": 8.5,
-    "d": "3-5",
-    "e": 14500,
-    "t": 16000,
-    "sl": 13800,
-    "w": 75
-  }
-]
+CHỈ trả về JSON array thuần (KHÔNG markdown, KHÔNG giải thích):
+[{"s":"Mã","r":"Lý do ngắn gọn","sc":8.5,"d":"3-5","e":14500,"t":16000,"sl":13800,"w":75}]`;
 
-ĐỊNH DẠNG 2 (DÒNG VĂN BẢN):
-Mã: [Ticker] | Lý do: [Mẫu hình Price Action + Dòng tiền] | Điểm: [0-10] | Phiên: [3-10] | Vào: [Giá entry] | Mục tiêu: [Giá target] | Cắt lỗ: [Giá SL] | Win: [0-100]
-
-Chỉ trả về danh sách kết quả, không giải thích gì thêm.`;
-
-    const systemPrompt = "Bạn là chuyên gia trading ngắn hạn (T+3 đến T+5), giỏi phân tích breakout, dòng tiền và hành vi giá.";
+    const systemPrompt = `Chuyên gia PTKT, phong cách ${profile.trading_style}, khẩu vị ${profile.risk_level}. Output: JSON array thuần, không markdown, không text thừa.`;
 
     const response = await queryAIWithSystem(prompt, systemPrompt, settings);
 

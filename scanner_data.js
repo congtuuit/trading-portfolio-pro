@@ -33,6 +33,10 @@ export async function scanVietnamStocks() {
       "RSI",
       "ATR",
       "EMA20",
+      "EMA50",
+      "EMA200",
+      "BB.lower",
+      "BB.upper",
       "MACD.macd",
       "MACD.signal",
       "high",
@@ -92,25 +96,29 @@ export async function scanVietnamStocks() {
         rsi: d[6],
         atr: d[7],
         ema20: d[8],
-        macd: d[9],
-        macdSignal: d[10],
+        ema50: d[9],
+        ema200: d[10],
+        bb_lower: d[11],
+        bb_upper: d[12],
+        macd: d[13],
+        macdSignal: d[14],
 
         // ===== PRICE RANGE =====
-        high: d[11],
-        low: d[12],
+        high: d[15],
+        low: d[16],
 
         // ===== META =====
-        description: d[13],
-        type: d[14],
-        subtype: d[15],
+        description: d[17],
+        type: d[18],
+        subtype: d[19],
 
         // ===== EXTRA (useful later) =====
-        priceScale: d[17],
-        minMove: d[18],
+        priceScale: d[21],
+        minMove: d[22],
 
         // ===== CUSTOM SIGNALS (bonus) =====
         isUptrend: d[1] > d[8], // price > EMA20
-        isMACDBullish: d[9] > d[10],
+        isMACDBullish: d[13] > d[14],
         isRSIHot: d[6] > 70
       };
     });
@@ -132,6 +140,16 @@ export function prepareDataForAI(rawStocks) {
     v: ((s.volume || 0) / 1000000).toFixed(1) + "M",
     rsi: Math.round(s.rsi || 0),
     atr: (s.atr || 0).toFixed(2),
-    m: (s.macd || 0) > (s.macdSignal || 0) ? "UP" : "DOWN"
+    e20: s.ema20 ? Math.round(s.ema20) : 0,
+    e50: s.ema50 ? Math.round(s.ema50) : 0,
+    e200: s.ema200 ? Math.round(s.ema200) : 0,
+    bl: s.bb_lower ? Math.round(s.bb_lower) : 0,
+    bu: s.bb_upper ? Math.round(s.bb_upper) : 0,
+    m: (s.macd || 0) > (s.macdSignal || 0) ? "UP" : "DOWN",
+    vr: s.avgVolume10d > 0 ? (s.volume / s.avgVolume10d).toFixed(1) : "0.0",
+    hi: s.high ? Math.round(s.high) : 0,
+    lo: s.low ? Math.round(s.low) : 0,
+    sc: s._score || 0,
+    g: s._grade || "N/A"
   }));
 }

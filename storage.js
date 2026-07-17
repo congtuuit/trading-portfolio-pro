@@ -198,3 +198,13 @@ export async function saveCaughtSignals(signals) {
   await chrome.storage.local.set({ tpp_caught_signals: limitedSignals });
 }
 
+// ── Ranked Scan Results (persist score/grade/win rate/breakout) ──
+export async function saveRankedResults(results) {
+  await chrome.storage.local.set({ tpp_ranked_results: results });
+}
+
+export async function getRankedResults() {
+  const data = await chrome.storage.local.get("tpp_ranked_results");
+  return data.tpp_ranked_results || [];
+}
+

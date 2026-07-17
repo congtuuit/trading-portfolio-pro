@@ -235,7 +235,6 @@ export function bindTabEvents(root = document) {
 
 export function bindScannerEvents(onScan, onAIAnalyze, onAskAdvisor, root = document) {
   const btnScan = root.querySelector("#btn-scan-market");
-  const inpTarget = root.querySelector("#inp-target-profit");
 
   if (btnScan) {
     btnScan.addEventListener("click", async () => {
@@ -251,12 +250,11 @@ export function bindScannerEvents(onScan, onAIAnalyze, onAskAdvisor, root = docu
   const btnAI = root.querySelector("#btn-ai-analyze");
   if (btnAI) {
     btnAI.addEventListener("click", async () => {
-      const targetProfit = parseFloat(inpTarget.value) || 3;
       btnAI.disabled = true;
       const originalText = btnAI.textContent;
       btnAI.textContent = "⏳ Đang lọc AI...";
       try {
-        await onAIAnalyze(targetProfit);
+        await onAIAnalyze();
       } finally {
         btnAI.disabled = false;
         btnAI.textContent = originalText;
@@ -292,6 +290,9 @@ export function bindScannerEvents(onScan, onAIAnalyze, onAskAdvisor, root = docu
   }
 }
 
+
+const gradeColor = (grade) => grade === 'A' ? '#00e676' : grade === 'B' ? '#4caf50' : grade === 'C' ? '#ff9800' : grade === 'D' ? '#f44336' : '#9e9e9e';
+
 export function renderScannerResults(results, root = document, timestamp = null, containerId = "#scanner-raw-results") {
   const container = root.querySelector(containerId);
   if (!container) return;
@@ -324,15 +325,25 @@ export function renderScannerResults(results, root = document, timestamp = null,
               <span style="font-size:11px;">📈</span>
             </a>
           <span class="scanner-name">${res.description || res.name}</span>
+        ${res._grade ? `<span style="margin-left:auto;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;background:${gradeColor(res._grade)};color:white;">${res._grade}</span>` : ''}
         </div>
-        <div class="scanner-price-info">
-          <div class="scanner-price">${fmt(res.price)}</div>
+        <div class="scanner-price-info" style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div class="scanner-price">${fmt(res.price)}</div>
+            ${res._score ? `<span style="font-size:10px;color:var(--text-muted);">${res._score}/100</span>` : ''}
+          </div>
           <div class="scanner-change-badge ${res.changePercent >= 0 ? 'profit' : 'loss'}">
             ${fmtSigned(res.changePercent)}%
           </div>
         </div>
-      </div>
-        ${isAIList ? `
+      
+        ${res._gradeLabel ? `<div style="font-size:10px;color:var(--text-muted);margin-top:4px;padding:4px 8px;background:rgba(255,255,255,0.03);border-radius:4px;"><strong>${res._grade}:</strong> ${res._gradeLabel}</div>` : ''}
+        ${res._winRate ? `<div style="display:flex;gap:12px;font-size:10px;color:var(--text-muted);margin-top:2px;">
+          <span>🎯 Win Rate: <strong style="color:var(--profit);">${res._winRate}%</strong></span>
+          <span>📅 Kỳ vọng: <strong>${res._sessions}</strong></span>
+          ${res._breakoutDist !== undefined ? `<span>📊 Breakout: <strong style="color:${res._breakingOut ? 'var(--profit)' : res._nearResistance ? '#f1c40f' : 'var(--text-muted)'};">${res._breakoutDist}%</strong></span>` : ''}
+        </div>` : ''}
+${isAIList ? `
           <div class="ai-reason">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
           <span>🤖 <strong>AI:</strong></span>
@@ -359,9 +370,8 @@ export function renderScannerResults(results, root = document, timestamp = null,
           <span>RSI: <span class="stat-val">${Math.round(res.rsi)}</span></span>
           <span>Vol: <span class="stat-val">${(res.volume / 1000000).toFixed(1)}M</span></span>
         </div>
-          </div>
-        ` : ''}
       </div>
+      ` : ''}
     `;
   }).join("");
 
