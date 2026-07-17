@@ -100,6 +100,15 @@ dash_show_vol     = input.bool(true, "Hiện Dòng Khối Lượng (Vol)", group
 dash_show_zones   = input.bool(true, "Hiện Dòng Vùng Cản Chờ Sẵn", group=grp_vis)
 dash_show_wr      = input.bool(true, "Hiện Dòng Lịch Sử Thắng", group=grp_vis)
 
+// ── Kháng cự / Hỗ trợ ngang & Trendline ──
+grp_sr_tl = "🎯 Hỗ Trợ/Kháng Cự & Trendline"
+show_sr_lines   = input.bool(true, "Hiện Đường Kháng Cự/Hỗ Trợ Ngang", group=grp_sr_tl)
+sr_left         = input.int(20, "Pivot Hỗ Trợ/Kháng Cự (Trái)", minval=5, group=grp_sr_tl)
+sr_right        = input.int(10, "Pivot Hỗ Trợ/Kháng Cự (Phải)", minval=2, group=grp_sr_tl)
+show_trendlines = input.bool(true, "Hiện Đường Trendline Tự Động", group=grp_sr_tl)
+tl_left         = input.int(15, "Pivot Trendline (Trái)", minval=5, group=grp_sr_tl)
+tl_right        = input.int(5, "Pivot Trendline (Phải)", minval=2, group=grp_sr_tl)
+
 // ── Win-Rate ──
 grp_wr = "📊 Thống Kê"
 future_sessions      = input.int(5,    "Đánh giá lệnh sau bao nhiêu nến?", group=grp_wr, minval=1, maxval=50)
@@ -124,6 +133,21 @@ var float prev_rsi_high     = na
 var float prev_price_at_rsi_high = na
 var int   prev_rsi_low_bar   = na
 var int   prev_rsi_high_bar  = na
+
+// Hỗ trợ / Kháng cự ngang & Trendline state
+var line res_line = na
+var line sup_line = na
+var line bearish_tl = na
+var line bullish_tl = na
+
+var int ph2_x = na
+var float ph2_y = na
+var int ph1_x = na
+var float ph1_y = na
+var int pl2_x = na
+var float pl2_y = na
+var int pl1_x = na
+var float pl1_y = na
 
 // Win-rate buffers (per-bar SL check)
 var int[]   wr_bars    = array.new<int>()
@@ -264,6 +288,46 @@ if not na(rsi_pivot_high)
     prev_rsi_high            := curr_rsi_high
     prev_price_at_rsi_high   := curr_price_high
     prev_rsi_high_bar        := curr_rsi_high_bar
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  6.1) SUPPORT / RESISTANCE & TRENDLINES           ║
+// ╚═══════════════════════════════════════════════════╝
+// ── Kháng cự / Hỗ trợ ngang ──
+sr_ph = ta.pivothigh(high, sr_left, sr_right)
+sr_pl = ta.pivotlow(low,   sr_left, sr_right)
+
+if show_sr_lines
+    if not na(sr_ph)
+        line.delete(res_line)
+        res_line := line.new(x1=bar_index[sr_right], y1=sr_ph, x2=bar_index, y2=sr_ph, color=color.new(color.red, 20), width=1, style=line.style_solid, extend=extend.right)
+    if not na(sr_pl)
+        line.delete(sup_line)
+        sup_line := line.new(x1=bar_index[sr_right], y1=sr_pl, x2=bar_index, y2=sr_pl, color=color.new(color.green, 20), width=1, style=line.style_solid, extend=extend.right)
+
+// ── Trendline tự động ──
+tl_ph = ta.pivothigh(high, tl_left, tl_right)
+tl_pl = ta.pivotlow(low,   tl_left, tl_right)
+
+if show_trendlines
+    // Trendline Giảm ( Bearish Trendline - nối các đỉnh )
+    if not na(tl_ph)
+        ph2_x := ph1_x
+        ph2_y := ph1_y
+        ph1_x := bar_index[tl_right]
+        ph1_y := tl_ph
+        if not na(ph2_x)
+            line.delete(bearish_tl)
+            bearish_tl := line.new(x1=ph2_x, y1=ph2_y, x2=ph1_x, y2=ph1_y, color=color.new(color.red, 0), width=2, style=line.style_solid, extend=extend.right)
+
+    // Trendline Tăng ( Bullish Trendline - nối các đáy )
+    if not na(tl_pl)
+        pl2_x := pl1_x
+        pl2_y := pl1_y
+        pl1_x := bar_index[tl_right]
+        pl1_y := tl_pl
+        if not na(pl2_x)
+            line.delete(bullish_tl)
+            bullish_tl := line.new(x1=pl2_x, y1=pl2_y, x2=pl1_x, y2=pl1_y, color=color.new(color.green, 0), width=2, style=line.style_solid, extend=extend.right)
 
 // ╔═══════════════════════════════════════════════════╗
 // ║  7) LAYER 3: CANDLESTICK PATTERNS (CÓ BOX)        ║
