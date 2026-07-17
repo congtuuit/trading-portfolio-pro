@@ -286,7 +286,7 @@ draw_pattern_box(int n_candles, string name, bool is_bullish) =>
              bgcolor=c_bg, border_color=c_brd, border_width=1)
         l = label.new(bar_index - math.floor((n_candles-1)/2), is_bullish ? bot_y : top_y, text=name,
              style=is_bullish ? label.style_label_up : label.style_label_down,
-             color=color.new(color.black, 100), textcolor=c_brd, size=size.tiny)
+             color=color.new(color.black, 100), textcolor=c_brd, size=size.normal)
 
 if barstate.isconfirmed
     if morning_star
