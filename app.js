@@ -8,8 +8,6 @@ import {
   savePortfolio,
   getSettings,
   saveSettings,
-  getChatHistory,
-  saveChatHistory,
   getTradeHistory,
   saveTradeHistory,
   getScannerResults,
@@ -20,13 +18,8 @@ import {
   getAdviceCache,
   saveAdviceCache,
   clearAdviceCache,
-  getSystemLogs,
-  addSystemLog,
-  getCaughtSignals,
-  saveCaughtSignals
 } from "./storage.js";
 import { getDivisor, escapeHTML, calculateRR, parseMarkdown } from "./utils.js";
-import { getLiveStockContext } from "./mcp.js";
 import {
   renderPortfolio,
   bindFormEvents,
@@ -35,25 +28,14 @@ import {
   bindT0Events,
   populateForm,
   bindSettingsEvents,
-  bindAIEvents,
-  bindAIPortfolio,
-  bindAIDCA,
-  bindChatEvents,
-  appendChatMessage,
-  openChatPanel,
-  removeTypingIndicator,
   updateSummaryBar,
-  renderChatHistory,
   renderHistory,
   bindTabEvents,
   bindScannerEvents,
   renderScannerResults,
-  renderSystemLogs,
   toggleModal,
   bindDeepResearchEvents,
   renderDeepResearch,
-  renderCaughtSignals,
-  bindCaughtSignalEvents
 } from "./ui.js";
 import { fetchPricesMap, fetchDeepResearchData } from "./price.js";
 import { queryAI, fetchModels, screenPotentialStocks, getDetailedAdvice, analyzeDeepStock } from "./ai.js";
@@ -93,6 +75,10 @@ export async function initApp(root) {
       return { success: false, error: "Tên mã giao dịch không tồn tại trên TradingView." };
     }
 
+    tradeData.tpAlerted = false;
+    tradeData.slAlerted = false;
+    tradeData.t0Alerted = false;
+
     if (tradeData.id && tradeData.id.startsWith("trade_")) {
       const index = portfolio.findIndex((t) => t.id === tradeData.id);
       if (index >= 0) portfolio[index] = { ...portfolio[index], ...tradeData };
@@ -118,11 +104,34 @@ export async function initApp(root) {
     updatePricesAndRender();
   }
 
-  async function handleT0(id, newEntry) {
+  async function handleT0(id, newEntry, realizedProfit) {
     const index = portfolio.findIndex((t) => t.id === id);
     if (index >= 0) {
-      portfolio[index].entryPrice = newEntry;
+      const trade = portfolio[index];
+      const divisor = getDivisor(trade.symbol);
+      trade.entryPrice = newEntry;
+      trade.tpAlerted = false;
+      trade.slAlerted = false;
+      trade.t0Alerted = false;
       await savePortfolio(portfolio);
+
+      if (realizedProfit && realizedProfit > 0) {
+        const historyRecord = {
+          id: "hist_" + Date.now() + Math.random().toString().slice(2, 5),
+          date: Date.now(),
+          symbol: trade.symbol,
+          type: trade.type === "BUY" ? "T0_BUY" : "T0_SELL",
+          qtyClosed: 0,
+          entryPrice: trade.entryPrice / divisor,
+          closePrice: (trade.entryPrice + (trade.type === "BUY" ? realizedProfit : -realizedProfit)) / divisor,
+          realizedPnl: realizedProfit
+        };
+
+        tradeHistory.push(historyRecord);
+        await saveTradeHistory(tradeHistory);
+        renderHistory(tradeHistory, root);
+      }
+
       updatePricesAndRender();
     }
   }
@@ -196,24 +205,6 @@ export async function initApp(root) {
     refreshTimer = setInterval(updatePricesAndRender, REFRESH_INTERVAL_MS);
   }
 
-  async function sendToChat(prompt) {
-    openChatPanel(root);
-    appendChatMessage("user", prompt, false, root);
-    appendChatMessage("system-typing", "", false, root);
-    chatHistory.push({ role: "user", text: prompt });
-
-    try {
-      const res = await queryAI(chatHistory, appSettings);
-      chatHistory.push({ role: "assistant", text: res });
-      removeTypingIndicator(root);
-      appendChatMessage("assistant", res.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'), true, root);
-    } catch (err) {
-      removeTypingIndicator(root);
-      chatHistory.pop();
-      appendChatMessage("assistant", `❌ Lỗi: ${err.message}`, true, root);
-    }
-  }
-
   async function handleScanMarket() {
     const container = root.querySelector("#scanner-raw-results");
     const btnAI = root.querySelector("#btn-ai-analyze");
@@ -252,7 +243,7 @@ export async function initApp(root) {
       const minRR = parseFloat(root.querySelector("#inp-min-rr")?.value || 0);
 
       const finalResults = aiResults.map(ai => {
-        const raw = lastScannedData.find(r => (r.ticker || "").includes(ai.s.toUpperCase()));
+        const raw = lastScannedData.find(r => (r.symbol || "").toUpperCase() === ai.s.toUpperCase());
         if (!raw) return null;
         const rr = calculateRR(ai.e, ai.t, ai.sl, "BUY");
         return { ...raw, aiReason: ai.r, aiScore: ai.sc, aiDuration: ai.d, aiEntry: ai.e, aiTarget: ai.t, aiStoploss: ai.sl, aiWinRate: ai.w, aiRR: rr };
@@ -273,7 +264,7 @@ export async function initApp(root) {
     const cached = await getAdviceCache(symbol);
     if (cached) return showAdviceModal(symbol, cached);
 
-    let fullData = lastScannedData.find(s => (s.ticker || s.symbol || "").includes(symbol));
+    let fullData = lastScannedData.find(s => (s.ticker || s.symbol || "").toUpperCase() === symbol.toUpperCase());
     if (!fullData) return alert(`Không tìm thấy dữ liệu cho mã ${symbol}.`);
 
     const fullSymbol = fullData.ticker || fullData.symbol;
@@ -302,12 +293,6 @@ export async function initApp(root) {
       const formatted = parseMarkdown(content);
       body.innerHTML = `<div style="font-size:13px; line-height:1.6;">${formatted}</div>`;
     }
-    toggleModal(root, "modal-analysis", true);
-  }
-
-  function handleViewRaw(symbol, rawData) {
-    root.querySelector("#modal-title").innerHTML = `Raw: <strong>${symbol}</strong>`;
-    root.querySelector("#modal-body").innerHTML = `<pre style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; font-size:11px; overflow:auto; max-height:350px;">${JSON.stringify(rawData, null, 2)}</pre>`;
     toggleModal(root, "modal-analysis", true);
   }
 
@@ -369,14 +354,10 @@ export async function initApp(root) {
 
   portfolio = await getPortfolio();
   appSettings = await getSettings();
-  applyTheme(appSettings.theme);
-  chatHistory = await getChatHistory();
   tradeHistory = await getTradeHistory();
-  caughtSignals = await getCaughtSignals();
   const scannerCache = await getScannerResults();
   const rawCache = await getRawScannerResults();
 
-  renderChatHistory(chatHistory, root);
   renderHistory(tradeHistory, root);
 
   // Khôi phục dữ liệu Quét Gốc
@@ -392,66 +373,14 @@ export async function initApp(root) {
     renderScannerResults(scannerCache.results, root, scannerCache.timestamp, "#scanner-ai-results");
   }
 
-
-
-  // Tab Nhật ký logic
-  const logTabBtn = root.querySelector('.tab-btn[data-target="section-logs"]');
-  if (logTabBtn) {
-    logTabBtn.addEventListener('click', async () => {
-      const logs = await getSystemLogs();
-      renderSystemLogs(logs, root);
-    });
-  }
-
   setupCoreBindings();
-  setupAIBindings();
   setupScannerBindings();
   setupManagementBindings();
-  setupSignalCatcher();
 
   updatePricesAndRender();
   startAutoRefresh();
 
   // ── INTERNAL BINDING HELPERS ──
-
-  function setupSignalCatcher() {
-    document.addEventListener('tpp-new-signal', async (e) => {
-      const signalData = e.detail;
-      signalData.timestamp = Date.now();
-      // Thêm tín hiệu vào đầu mảng
-      caughtSignals.unshift(signalData);
-      caughtSignals = caughtSignals.slice(0, 50);
-      await saveCaughtSignals(caughtSignals);
-      
-      renderCaughtSignals(caughtSignals, root);
-      console.log("[App] Signal saved to storage:", signalData);
-    });
-
-    bindCaughtSignalEvents(() => caughtSignals, async (sig) => {
-      // populate the form
-      const divisor = getDivisor(sig.symbol);
-      const fakeId = "trade_" + Date.now();
-      root.querySelector("#inp-symbol").value = sig.symbol;
-      root.querySelector("#inp-type").value = sig.action;
-      root.querySelector("#inp-entry").value = sig.price / divisor;
-      root.querySelector("#inp-sl").value = sig.sl ? (sig.sl / divisor) : "";
-      root.querySelector("#inp-tp").value = sig.tp1 ? (sig.tp1 / divisor) : "";
-      
-      // Navigate to portfolio tab
-      root.querySelector('.tab-btn[data-target="section-portfolio"]').click();
-      // Ensure form is visible
-      root.querySelector("#form-section").style.display = "block";
-      root.querySelector("#form-title").textContent = "➕ Thêm vị thế từ Tín Hiệu";
-      
-    }, async () => {
-      caughtSignals = [];
-      await saveCaughtSignals(caughtSignals);
-      renderCaughtSignals(caughtSignals, root);
-    }, root);
-
-    // Initial render
-    renderCaughtSignals(caughtSignals, root);
-  }
 
   function setupCoreBindings() {
     bindFormEvents(handleSave, root);
@@ -460,68 +389,15 @@ export async function initApp(root) {
     bindT0Events(handleT0, root);
     bindTabEvents(root);
     bindDeepResearchEvents(handleDeepResearch, root);
-    bindSettingsEvents(appSettings, async (s) => { 
-      appSettings = s; 
-      await saveSettings(s); 
-      applyTheme(s.theme);
+    bindSettingsEvents(appSettings, async (s) => {
+      appSettings = s;
+      await saveSettings(s);
     }, fetchModels, root);
     initExportImport();
   }
 
-  function applyTheme(theme) {
-    const body = document.body;
-    body.classList.remove('theme-default', 'theme-cyber', 'theme-glass');
-    body.classList.add(`theme-${theme || 'default'}`);
-  }
-
-  function setupAIBindings() {
-    bindChatEvents(async (t) => {
-      chatHistory.push({ role: "user", text: t }); await saveChatHistory(chatHistory);
-      
-      const liveContext = await getLiveStockContext(t);
-      let queryHistory = [...chatHistory];
-      if (liveContext) {
-        const lastMsg = queryHistory[queryHistory.length - 1];
-        queryHistory[queryHistory.length - 1] = {
-          role: lastMsg.role,
-          text: lastMsg.text + liveContext
-        };
-      }
-      
-      const res = await queryAI(queryHistory, appSettings);
-      chatHistory.push({ role: "assistant", text: res }); await saveChatHistory(chatHistory);
-      return res;
-    }, async () => { chatHistory = []; await saveChatHistory(chatHistory); }, root);
-
-    bindAIEvents((sym, data, type) => {
-      sendToChat(`Trading: Mã ${sym}, Vị thế ${type}. Giá:${data.close}, RSI:${Math.round(data.rsi)}. Có nên vào không? (3 câu)`);
-    }, root);
-
-    bindAIPortfolio(() => {
-      if (portfolio.length === 0) return alert("Danh mục trống.");
-      let ctx = "Danh mục:\nMã | Lệnh | Qty | Entry | PnL%\n";
-      portfolio.forEach((t) => {
-        const pData = currentPriceMap[t.symbol] || { close: t.entryPrice };
-        const pct = (t.type === "BUY" ? (pData.close - t.entryPrice) : (t.entryPrice - pData.close)) / t.entryPrice * 100;
-        ctx += `- ${t.symbol} | ${t.type} | ${t.quantity} | ${t.entryPrice} | ${pct.toFixed(2)}%\n`;
-      });
-      sendToChat(ctx + "\nNhận xét sức khỏe danh mục và lời khuyên ngắn.");
-    }, root);
-
-    bindAIDCA((trade, currentPrice) => {
-      const d = currentPriceMap[trade.symbol] || {};
-      const pct = (trade.type === "BUY" ? (currentPrice - trade.entryPrice) : (trade.entryPrice - currentPrice)) / trade.entryPrice * 100;
-      sendToChat(`DCA ${trade.symbol} (${trade.type}): Lỗ ${pct.toFixed(2)}%. Giá: ${currentPrice}, RSI: ${Math.round(d.rsi)}. Có nên DCA không?`);
-      toggleModal(root, "modal-dca", false);
-    }, root);
-
-    root.querySelector('#btn-clear-cache')?.addEventListener('click', async () => {
-      if (confirm('Xóa bộ nhớ đệm AI?')) { await clearAdviceCache(); alert('Đã xóa cache!'); }
-    });
-  }
-
   function setupScannerBindings() {
-    bindScannerEvents(handleScanMarket, handleAIAnalyze, handleAskAdvisor, handleViewRaw, root);
+    bindScannerEvents(handleScanMarket, handleAIAnalyze, handleAskAdvisor, root);
     root.querySelector('#btn-clear-scanner')?.addEventListener('click', async () => {
       if (confirm('Xóa kết quả quét?')) {
         await clearAllScannerData();
@@ -543,11 +419,8 @@ export async function initApp(root) {
   }
 
   function setupManagementBindings() {
-    root.querySelector('.tab-btn[data-target="section-logs"]')?.addEventListener('click', async () => {
-      renderSystemLogs(await getSystemLogs(), root);
-    });
-    root.querySelector('#btn-clear-logs')?.addEventListener('click', async () => {
-      if (confirm('Xóa nhật ký?')) { await chrome.storage.local.remove('tpp_logs'); renderSystemLogs([], root); }
+    root.querySelector('#btn-clear-cache')?.addEventListener('click', async () => {
+      if (confirm('Xóa bộ nhớ đệm AI?')) { await clearAdviceCache(); alert('Đã xóa cache!'); }
     });
   }
 }

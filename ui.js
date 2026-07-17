@@ -233,10 +233,10 @@ export function bindTabEvents(root = document) {
   });
 }
 
-export function bindScannerEvents(onScan, onAIAnalyze, onAskAdvisor, onViewRaw, root = document) {
+export function bindScannerEvents(onScan, onAIAnalyze, onAskAdvisor, root = document) {
   const btnScan = root.querySelector("#btn-scan-market");
   const inpTarget = root.querySelector("#inp-target-profit");
-  
+
   if (btnScan) {
     btnScan.addEventListener("click", async () => {
       btnScan.disabled = true;
@@ -286,15 +286,7 @@ export function bindScannerEvents(onScan, onAIAnalyze, onAskAdvisor, onViewRaw, 
         return;
       }
 
-      // 2. Nếu bấm vào nút Raw
-      if (e.target.closest(".btn-view-raw")) {
-        e.stopPropagation();
-        const rawData = JSON.parse(card.dataset.raw || "{}");
-        onViewRaw(symbol, rawData);
-        return;
-      }
-
-      // 3. Mặc định là xem tư vấn AI (Khi click vào các vùng khác của thẻ)
+      // Mặc định là xem tư vấn AI (Khi click vào các vùng khác của thẻ)
       onAskAdvisor(symbol);
     });
   }
@@ -367,7 +359,6 @@ export function renderScannerResults(results, root = document, timestamp = null,
           <span>RSI: <span class="stat-val">${Math.round(res.rsi)}</span></span>
           <span>Vol: <span class="stat-val">${(res.volume / 1000000).toFixed(1)}M</span></span>
         </div>
-        <button class="btn-view-raw" style="background:var(--bg-input); border:1px solid var(--border); color:var(--text-muted); font-size:10px; padding:2px 6px; border-radius:4px;" data-tooltip="Xem dữ liệu gốc JSON từ TradingView">Raw 📄</button>
           </div>
         ` : ''}
       </div>
@@ -375,37 +366,6 @@ export function renderScannerResults(results, root = document, timestamp = null,
   }).join("");
 
   container.innerHTML = html;
-}
-
-export function renderSystemLogs(logs, root = document) {
-  const container = root.querySelector("#log-list");
-  if (!container) return;
-
-  if (!logs || logs.length === 0) {
-    container.innerHTML = `<div class="empty-state">Chưa có hoạt động nào được ghi lại.</div>`;
-    return;
-  }
-
-  container.innerHTML = logs.map(log => {
-    const time = new Date(log.time).toLocaleTimeString();
-    let typeColor = "var(--text-muted)";
-    if (log.type === 'ERROR') typeColor = "var(--loss)";
-    if (log.type === 'AI_RES') typeColor = "var(--profit)";
-    if (log.type === 'AI_PROMPT') typeColor = "var(--accent-blue)";
-
-    return `
-      <div class="log-item" style="background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:10px; font-size:11px;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-          <span style="color:${typeColor}; font-weight:bold;">[${log.type}] ${log.title}</span>
-          <span style="color:var(--text-muted);">${time}</span>
-        </div>
-        <details>
-          <summary style="cursor:pointer; color:var(--accent-blue);">Xem chi tiết</summary>
-          <div class="log-detail" style="margin-top:8px; padding:8px; background:rgba(0,0,0,0.2); border-radius:4px; font-size:11px; white-space:pre-wrap; word-break:break-all; max-height:400px; overflow-y:auto;">${log.detail}</div>
-        </details>
-      </div>
-    `;
-  }).join("");
 }
 
 export function appendChatMessage(role, text, isHtml = false, root = document) {
@@ -660,10 +620,6 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
         sliderEl.oninput = () => { if (displayEl) displayEl.textContent = `${sliderEl.value} phiên`; };
       }
 
-      // Load Theme selection
-      const themeEl = root.querySelector("#inp-theme");
-      if (themeEl) themeEl.value = settings.theme || "default";
-
       const msgEl = root.querySelector("#msg-api-key");
       if (msgEl) msgEl.innerHTML = `Lấy Key tại: <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent-blue);">Google AI Studio</a> hoặc <a href="https://platform.openai.com/api-keys" target="_blank" style="color:var(--accent-blue);">OpenAI</a>`;
       toggleModal(root, "modal-settings", true);
@@ -761,10 +717,6 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
       // Save Lookback Periods
       const sliderEl = root.querySelector("#inp-lookback");
       if (sliderEl) settings.lookbackPeriods = parseInt(sliderEl.value) || 20;
-
-      // Save Theme settings
-      const themeEl = root.querySelector("#inp-theme");
-      if (themeEl) settings.theme = themeEl.value;
 
       await onSaveSettings(settings);
       modalSettings.style.display = "none";
@@ -917,6 +869,7 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}, root
         root.querySelector("#dca-qty").textContent = fmt(trade.quantity);
         root.querySelector("#dca-entry").textContent = fmtDisplay(trade.entryPrice, trade.symbol);
         root.querySelector("#dca-current").textContent = fmtDisplay(currentDCAPrice, trade.symbol);
+        renderDCATechnicalAdvice(root, trade, priceData);
         const aiResponse = root.querySelector("#ai-dca-response");
         if (aiResponse) { aiResponse.style.display = "none"; aiResponse.innerHTML = ""; }
         root.querySelector("#inp-dca-qty").value = "";
@@ -1036,6 +989,96 @@ export function updateSummaryBar(portfolio, priceMap, root = document) {
     });
     allocationBar.innerHTML = barHtml;
   }
+}
+
+export function renderDCATechnicalAdvice(root, trade, priceData) {
+  const container = root.querySelector("#dca-tech-advice");
+  if (!container) return;
+
+  if (!priceData || !priceData.close) {
+    container.style.display = "none";
+    return;
+  }
+
+  const divisor = getDivisor(trade.symbol);
+  const curPrice = priceData.close / divisor;
+  const bbLower = (priceData.bb_lower || 0) / divisor;
+  const ema200 = (priceData.ema200 || 0) / divisor;
+  const rsi = Math.round(priceData.rsi || 0);
+  const isBuy = trade.type === "BUY";
+
+  let html = `<strong>💡 Cố vấn Kỹ thuật (TradingView)</strong><br/>`;
+  if (isBuy) {
+    html += `- Hỗ trợ BB Lower: <strong>${bbLower ? bbLower.toFixed(2) : "N/A"}</strong><br/>`;
+    html += `- Hỗ trợ EMA200: <strong>${ema200 ? ema200.toFixed(2) : "N/A"}</strong><br/>`;
+    html += `- Chỉ số RSI: <strong>${rsi}</strong> (${rsi <= 30 ? '<span style="color:var(--profit); font-weight:bold;">QUÁ BÁN</span>' : 'Bình thường'})<br/>`;
+
+    // Đánh giá vùng DCA
+    if (priceData.bb_lower && priceData.close <= priceData.bb_lower) {
+      html += `<div style="margin-top:6px; color:var(--profit); font-weight:500;">➔ Giá đã chạm/phá dưới dải dưới Bollinger Bands. Vùng DCA rất tốt!</div>`;
+    } else if (priceData.bb_lower && priceData.close > priceData.bb_lower) {
+      html += `<div style="margin-top:6px; color:var(--text-muted);">➔ Giá đang nằm trên dải dưới BB. Hãy cân nhắc gom thêm khi giá sát vùng hỗ trợ <strong>${bbLower.toFixed(2)}</strong>.</div>`;
+    }
+  } else {
+    // For SELL positions
+    const bbUpper = (priceData.bb_upper || 0) / divisor;
+    html += `- Kháng cự BB Upper: <strong>${bbUpper ? bbUpper.toFixed(2) : "N/A"}</strong><br/>`;
+    html += `- Kháng cự EMA200: <strong>${ema200 ? ema200.toFixed(2) : "N/A"}</strong><br/>`;
+    html += `- Chỉ số RSI: <strong>${rsi}</strong> (${rsi >= 70 ? '<span style="color:var(--loss); font-weight:bold;">QUÁ MUA</span>' : 'Bình thường'})<br/>`;
+
+    // Đánh giá vùng DCA
+    if (priceData.bb_upper && priceData.close >= priceData.bb_upper) {
+      html += `<div style="margin-top:6px; color:var(--profit); font-weight:500;">➔ Giá đã chạm/phá trên dải trên Bollinger Bands. Vùng DCA bán khống rất tốt!</div>`;
+    } else if (priceData.bb_upper && priceData.close < priceData.bb_upper) {
+      html += `<div style="margin-top:6px; color:var(--text-muted);">➔ Giá đang dưới dải trên BB. Cân nhắc chờ hồi sát kháng cự <strong>${bbUpper.toFixed(2)}</strong> trước khi bán thêm.</div>`;
+    }
+  }
+
+  container.innerHTML = html;
+  container.style.display = "block";
+}
+
+export function calculatePositionSize(root = document) {
+  const symIn = root.querySelector("#inp-symbol");
+  const riskIn = root.querySelector("#inp-risk-amt");
+  const entryIn = root.querySelector("#inp-entry");
+  const slIn = root.querySelector("#inp-sl");
+  const qtyIn = root.querySelector("#inp-qty");
+
+  if (!symIn || !riskIn || !entryIn || !slIn || !qtyIn) return;
+
+  const symbol = symIn.value.trim().toUpperCase();
+  const riskAmt = parseFloat(riskIn.value) || 0;
+  const entry = parseFloat(entryIn.value) || 0;
+  const sl = parseFloat(slIn.value) || 0;
+
+  // Cập nhật nhãn đơn vị tiền tệ tự động
+  const lblUnit = root.querySelector("#lbl-risk-unit");
+  if (lblUnit) {
+    const isVN = symbol.startsWith("HOSE:") || symbol.startsWith("HNX:") || symbol.startsWith("UPCOM:") || (symbol.length === 3 && !symbol.includes(":"));
+    lblUnit.textContent = isVN ? "VND" : "USD";
+  }
+
+  if (riskAmt <= 0 || entry <= 0 || sl <= 0 || entry === sl) {
+    return; // Không đủ thông tin tính toán
+  }
+
+  const divisor = getDivisor(symbol);
+  const diff = Math.abs(entry - sl);
+
+  // Qty = Risk / (Diff * Divisor)
+  let qty = riskAmt / (diff * divisor);
+
+  // Nếu là VN (divisor == 1000 hoặc lô 100), làm tròn xuống lô 100
+  if (divisor === 1000) {
+    qty = Math.floor(qty / 100) * 100;
+    if (qty < 100) qty = 100; // Tối thiểu 100 cổ phiếu tại VN
+  } else {
+    qty = Math.round(qty);
+    if (qty < 1) qty = 1;
+  }
+
+  qtyIn.value = qty;
 }
 
 /**
@@ -1281,6 +1324,18 @@ export function bindFormEvents(onSave, root = document) {
     symIn.setSelectionRange(pos, pos);
   });
 
+  // Lắng nghe thay đổi để tự động tính toán khối lượng vị thế (Position Sizing)
+  const riskIn = root.querySelector("#inp-risk-amt");
+  const entryIn = root.querySelector("#inp-entry");
+  const slIn = root.querySelector("#inp-sl");
+
+  const handleCalc = () => calculatePositionSize(root);
+  symIn.addEventListener("input", handleCalc);
+  if (riskIn) riskIn.addEventListener("input", handleCalc);
+  entryIn.addEventListener("input", handleCalc);
+  slIn.addEventListener("input", handleCalc);
+  typeSelect.addEventListener("change", handleCalc);
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     clearErrors();
@@ -1344,6 +1399,7 @@ export function populateForm(trade, root = document) {
   currentEditId = trade.id;
   const divisor = getDivisor(trade.symbol);
   root.querySelector("#inp-symbol").value = trade.symbol;
+  root.querySelector("#inp-risk-amt").value = "";
   root.querySelector("#inp-type").value = trade.type;
   root.querySelector("#inp-qty").value = trade.quantity;
   root.querySelector("#inp-entry").value = trade.entryPrice / divisor;
@@ -1422,7 +1478,7 @@ export function renderHistory(history, root = document) {
 
     const dateStr = new Date(record.date).toLocaleString("vi-VN");
     const pnlClass = record.realizedPnl >= 0 ? "profit" : "loss";
-    const typeClass = record.type === "BUY" ? "badge-buy" : "badge-sell";
+    const typeClass = record.type.includes("BUY") ? "badge-buy" : "badge-sell";
     
     // Convert to display currency bounds
     const displayPnl = record.realizedPnl / 1000;

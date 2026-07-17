@@ -3,10 +3,11 @@
  * Handles periodic portfolio monitoring and Telegram notifications.
  */
 
-import { 
-  getPortfolio, 
-  getSettings, 
-  addSystemLog 
+import {
+  getPortfolio,
+  savePortfolio,
+  getSettings,
+  addSystemLog
 } from "./storage.js";
 import { fetchPricesMap, fetchDeepResearchData } from "./price.js";
 import { getDivisor } from "./utils.js";
@@ -63,6 +64,7 @@ async function checkPortfolioAndNotify() {
 
   const symbols = portfolio.map(t => t.symbol);
   const priceMap = await fetchPricesMap(symbols);
+  let portfolioChanged = false;
 
   for (const trade of portfolio) {
     const data = priceMap[trade.symbol];
@@ -78,17 +80,50 @@ async function checkPortfolioAndNotify() {
 
     // Condition 1: TP/SL Hit (Compare full prices)
     if (tp && (isBuy ? data.close >= tp : data.close <= tp)) {
-      await notifyTelegram(settings, `🎯 <b>TARGET REACHED!</b>\n\n${trade.symbol} đã chạm vùng Chốt Lời tại <b>${price}</b>.\nHãy xem xét chốt vị thế để bảo vệ lợi nhuận.`);
+      if (!trade.tpAlerted) {
+        await notifyTelegram(settings, `🎯 <b>TARGET REACHED!</b>\n\n${trade.symbol} đã chạm vùng Chốt Lời tại <b>${price}</b>.\nHãy xem xét chốt vị thế để bảo vệ lợi nhuận.`);
+        trade.tpAlerted = true;
+        portfolioChanged = true;
+      }
+    } else {
+      if (trade.tpAlerted) {
+        trade.tpAlerted = false;
+        portfolioChanged = true;
+      }
     }
-    else if (sl && (isBuy ? data.close <= sl : data.close >= sl)) {
-      await notifyTelegram(settings, `⚠️ <b>STOP LOSS HIT!</b>\n\n${trade.symbol} đã chạm vùng Cắt Lỗ tại <b>${price}</b>.\nAnh nên rà soát lại kỷ luật giao dịch.`);
+
+    if (sl && (isBuy ? data.close <= sl : data.close >= sl)) {
+      if (!trade.slAlerted) {
+        await notifyTelegram(settings, `⚠️ <b>STOP LOSS HIT!</b>\n\n${trade.symbol} đã chạm vùng Cắt Lỗ tại <b>${price}</b>.\nAnh nên rà soát lại kỷ luật giao dịch.`);
+        trade.slAlerted = true;
+        portfolioChanged = true;
+      }
+    } else {
+      if (trade.slAlerted) {
+        trade.slAlerted = false;
+        portfolioChanged = true;
+      }
     }
 
     // Condition 2: T0 Opportunity (RSI Oversold + Price <= BB Lower)
     // Both sides of comparison are full prices: data.close vs data.bb_lower
-    if (isBuy && data.rsi > 0 && data.rsi < 30 && data.close <= data.bb_lower) {
-      await notifyTelegram(settings, `🌊 <b>THAY NƯỚC T0!</b>\n\n${trade.symbol} đang ở vùng <b>QUÁ BÁN</b> (RSI: ${Math.round(data.rsi)}).\nGiá đã chạm dải BB Lower (${price}). Đây là cơ hội tốt để lướt T0 hạ giá vốn!`);
+    const isT0Opportunity = isBuy && data.rsi > 0 && data.rsi < 30 && data.close <= data.bb_lower;
+    if (isT0Opportunity) {
+      if (!trade.t0Alerted) {
+        await notifyTelegram(settings, `🌊 <b>THAY NƯỚC T0!</b>\n\n${trade.symbol} đang ở vùng <b>QUÁ BÁN</b> (RSI: ${Math.round(data.rsi)}).\nGiá đã chạm dải BB Lower (${price}). Đây là cơ hội tốt để lướt T0 hạ giá vốn!`);
+        trade.t0Alerted = true;
+        portfolioChanged = true;
+      }
+    } else {
+      if (trade.t0Alerted) {
+        trade.t0Alerted = false;
+        portfolioChanged = true;
+      }
     }
+  }
+
+  if (portfolioChanged) {
+    await savePortfolio(portfolio);
   }
 }
 
