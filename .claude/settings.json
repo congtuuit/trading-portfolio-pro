@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(gh pr diff logic 2>&1)",
+      "Read(//c/Users/tu.vancong/.claude/**)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\tu.vancong\\.claude"
+    ]
+  }
+}
