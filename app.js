@@ -255,6 +255,7 @@ export async function initApp(root) {
       </div>`;
 
     try {
+      const minRR = appSettings.minRR || 0;
       // Pre-rank assets using scorer.js before sending to AI
       const ranked = rankStocks(lastScannedData, appSettings, 25);
       const cleanedData = prepareDataForAI(ranked);
