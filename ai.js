@@ -44,9 +44,26 @@ export async function queryAI(inputData, settings) {
 /**
  * PHASE 02: SMART SCREENER (STABLE VERSION)
  */
-export async function screenPotentialStocks(rawStocks, targetProfit, settings) {
+export async function screenPotentialStocks(rawStocks, targetProfit, settings, assetType = "STOCKS") {
   try {
-    // 1. Giảm payload để tránh AI bị quá tải token
+    // 1. Inject user profile into the prompt
+    const profile = {
+      trading_style: settings.tradingStyle || "swing",
+      risk_level: settings.riskLevel || "trung bình"
+    };
+
+    const isCrypto = assetType === "CRYPTO";
+
+    const styleLabel = profile.trading_style === "lướt sóng" ?
+      (isCrypto ? "LƯỚT SÓNG (Scalping, 1h ~ 1 ngày)" : "LƯỚT SÓNG (Scalping, T+0 ~ T+3)") :
+      profile.trading_style === "swing" ?
+      (isCrypto ? "SWING (Ngắn hạn, 3 ~ 10 ngày)" : "SWING (Ngắn hạn, T+3 ~ T+10)") :
+      (isCrypto ? "ĐẦU TƯ DÀI HẠN (Position, 20 ngày trở lên)" : "ĐẦU TƯ DÀI HẠN (Position, T+20 trở lên)");
+
+    const riskLabel = profile.risk_level === "cao" ? "CHẤP NHẬN RỦI RO CAO (ưu tiên lợi nhuận, chấp nhận biến động mạnh)" :
+      profile.risk_level === "thấp" ? "AN TOÀN (ưu tiên bảo toàn vốn)" : "TRUNG BÌNH (cân bằng rủi ro-lợi nhuận)";
+
+    // 2. Build compact but enriched data
     const compactData = rawStocks.map(s => ({
       s: s.s,
       p: s.p,
@@ -54,65 +71,146 @@ export async function screenPotentialStocks(rawStocks, targetProfit, settings) {
       v: s.v,
       rsi: s.rsi,
       atr: s.atr,
-      m: s.m
+      e20: s.e20,
+      e50: s.e50,
+      e200: s.e200,
+      bl: s.bl,
+      bu: s.bu,
+      m: s.m,
+      vr: s.vr,
+      sc: s.sc,
+      g: s.g
     }));
 
     const cleanedData = JSON.stringify(compactData);
 
-    const prompt = `Dữ liệu cổ phiếu (JSON):
+    const prompt = isCrypto ?
+    `CHỌN 8 COINS TỐT NHẤT từ dữ liệu đã chấm điểm:
 ${cleanedData}
 
-Nhiệm vụ: Tìm ra Top 10 cổ phiếu có thiết lập Swing Trade (lướt sóng) đẹp nhất dựa trên Price Action.
+Hồ sơ NĐT: ${styleLabel} | ${riskLabel}
 
-Tiêu chí lọc:
-1. Xu hướng: Chỉ chọn cổ phiếu có xu hướng Tăng hoặc Đang tích lũy nền chặt chẽ trên D1.
-2. Price Action & Patterns:
-   - Ưu tiên: Mẫu hình Cốc tay cầm, VCP, Nền giá phẳng (Flat Base), hoặc Breakout kháng cự với Vol lớn.
-   - Nến: Tìm kiếm các dấu hiệu đảo chiều/tiếp diễn như Pinbar, Engulfing tại các vùng hỗ trợ mạnh.
-3. Thanh khoản: Volume trung bình 10 phiên >= 1 triệu cổ (để đảm bảo thoát hàng dễ).
-4. Sức mạnh giá (Relative Strength): Cổ phiếu giữ giá tốt hơn thị trường chung khi thị trường chỉnh.
+Yêu cầu: Phân tích kỹ thuật (xu hướng EMA, động lượng RSI/MACD, volume) để chọn các đồng coin phù hợp nhất với hồ sơ trên.
+- Lướt sóng: RSI 50-70, volume đột biến, giá>EMA20, R:R>=1.5
+- Swing: giá>EMA20>EMA50, MACD tăng, volume ổn định, R:R>=2
+- Dài hạn: giá>EMA200, vào tại BB lower/EMA50, R:R>=2
 
-Mục tiêu & Quản trị rủi ro:
-- Lướt sóng T+3 đến T+10.
-- Target lợi nhuận: Kỳ vọng thực tế theo các mốc kháng cự.
-- Tỷ lệ Risk/Reward: Bắt buộc >= 1:2.
+Lưu ý quan trọng về giá: Các mức giá vào (e), mục tiêu (t), cắt lỗ (sl) phải khớp với định dạng giá thực tế của coin đó trong danh sách (Ví dụ: BTCUSDT là 63906, SOLUSDT là 75.09, PEPEUSDT là 0.0000085). Không được nhân hay chia giá cho 1000.
 
-Yêu cầu trả về (Mỗi dòng một mã, format chuẩn):
-Mã: [Ticker] | Lý do: [Mẫu hình Price Action + Dòng tiền] | Điểm: [0-10] | Phiên: [3-10] | Vào: [Giá entry] | Mục tiêu: [Giá target] | Cắt lỗ: [Giá SL] | Win: [0-100]
+CHỈ trả về JSON array thuần (KHÔNG markdown, KHÔNG giải thích):
+[{"s":"BTCUSDT","r":"Lý do ngắn gọn","sc":8.5,"d":"3-5 ngày","e":63500,"t":68000,"sl":61500,"w":75}]`
+    :
+    `CHỌN 8 CP TỐT NHẤT từ dữ liệu đã chấm điểm:
+${cleanedData}
 
-Chỉ trả về danh sách, không giải thích thêm.`;
+Hồ sơ NĐT: ${styleLabel} | ${riskLabel}
 
-    const systemPrompt = "Bạn là chuyên gia trading ngắn hạn (T+3 đến T+5), giỏi phân tích breakout, dòng tiền và hành vi giá.";
+Yêu cầu: Phân tích kỹ thuật (xu hướng EMA, động lượng RSI/MACD, volume) để chọn CP phù hợp nhất với hồ sơ trên.
+- Lướt sóng: RSI 50-70, volume đột biến, giá>EMA20, R:R>=1.5
+- Swing: giá>EMA20>EMA50, MACD tăng, volume ổn định, R:R>=2
+- Dài hạn: giá>EMA200, vào tại BB lower/EMA50, R:R>=2
+
+CHỈ trả về JSON array thuần (KHÔNG markdown, KHÔNG giải thích):
+[{"s":"Mã","r":"Lý do ngắn gọn","sc":8.5,"d":"3-5","e":14500,"t":16000,"sl":13800,"w":75}]`;
+
+    const systemPrompt = isCrypto ?
+      `Chuyên gia PTKT Crypto, phong cách ${profile.trading_style}, khẩu vị ${profile.risk_level}. Output: JSON array thuần, không markdown, không text thừa.` :
+      `Chuyên gia PTKT, phong cách ${profile.trading_style}, khẩu vị ${profile.risk_level}. Output: JSON array thuần, không markdown, không text thừa.`;
 
     const response = await queryAIWithSystem(prompt, systemPrompt, settings);
 
-    // 2. Phân tích văn bản thô (Mỗi dòng một mã)
-    const lines = response.split('\n').filter(l => l.includes('Mã:') && l.includes('|'));
+    let results = [];
 
-    const results = lines.map(line => {
-      try {
-        const parts = {};
-        line.split('|').forEach(part => {
-          const [key, val] = part.split(':').map(s => s.trim());
-          if (key && val) parts[key.toLowerCase()] = val;
-        });
-
-        if (!parts['mã']) return null;
-
-        return {
-          s: parts['mã'],
-          r: parts['lý do'] || "",
-          sc: parseFloat(parts['điểm']) || 0,
-          d: parts['phiên'] || "3-5",
-          e: parseFloat(parts['vào']) || 0,
-          t: parseFloat(parts['mục tiêu']) || 0,
-          sl: parseFloat(parts['cắt lỗ']) || 0,
-          w: parseFloat(parts['win']) || 0
-        };
-      } catch (e) {
-        return null;
+    // Cách 1: Thử parse dạng JSON array trước
+    try {
+      const parsed = safeParseJSON(response);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        results = parsed.map(item => {
+          if (!item || !item.s) return null;
+          return {
+            s: String(item.s).toUpperCase(),
+            r: item.r || "",
+            sc: parseFloat(item.sc) || 0,
+            d: String(item.d || "3-5"),
+            e: parseFloat(item.e) || 0,
+            t: parseFloat(item.t) || 0,
+            sl: parseFloat(item.sl) || 0,
+            w: parseFloat(item.w) || 0
+          };
+        }).filter(Boolean);
       }
-    }).filter(Boolean);
+    } catch (e) {
+      console.log("[Screener] JSON parse failed, using fallbacks...");
+    }
+
+    // Cách 2: Nếu JSON parse rỗng, thử parse định dạng dòng pipe truyền thống
+    if (results.length === 0) {
+      const lines = response.split('\n').filter(l => l.includes('Mã:') && l.includes('|'));
+      results = lines.map(line => {
+        try {
+          const parts = {};
+          line.split('|').forEach(part => {
+            const [key, val] = part.split(':').map(s => s.trim());
+            if (key && val) parts[key.toLowerCase()] = val;
+          });
+
+          if (!parts['mã']) return null;
+
+          return {
+            s: parts['mã'].toUpperCase(),
+            r: parts['lý do'] || "",
+            sc: parseFloat(parts['điểm']) || 0,
+            d: parts['phiên'] || "3-5",
+            e: parseFloat(parts['vào']) || 0,
+            t: parseFloat(parts['mục tiêu']) || 0,
+            sl: parseFloat(parts['cắt lỗ']) || 0,
+            w: parseFloat(parts['win']) || 0
+          };
+        } catch (e) {
+          return null;
+        }
+      }).filter(Boolean);
+    }
+
+    // Cách 3: Nếu vẫn rỗng (Gemini trả văn bản tự do/danh sách hoa thị như "* MSB: SL 14900, Target 16100")
+    if (results.length === 0) {
+      const lines = response.split('\n');
+      for (const line of lines) {
+        // Trích xuất từ viết hoa 3-4 chữ cái làm mã (ví dụ: MSB, HPG)
+        const symbolMatch = line.match(/(?:^|\s|\*|\[)([A-Z]{3,4})(?:\s|:|\b)/);
+        if (symbolMatch) {
+          const s = symbolMatch[1].toUpperCase();
+          // Bỏ qua các từ khóa phổ biến trùng khớp
+          if (["BUY", "SELL", "NOTE", "JSON", "RISK", "STOP", "LOSS", "RSI", "VOL", "DIFF", "OK", "MIN", "MAX"].includes(s)) continue;
+
+          // Tìm thông số cắt lỗ, mục tiêu, giá vào
+          const slMatch = line.match(/(?:sl|cắt lỗ|stop\s*loss)\s*:?\s*(\d+)/i);
+          const targetMatch = line.match(/(?:target|mục tiêu|tg)\s*:?\s*(\d+)/i);
+          const entryMatch = line.match(/(?:vào|entry|buy)\s*:?\s*(\d+)/i);
+
+          if (slMatch || targetMatch) {
+            const sl = slMatch ? parseFloat(slMatch[1]) : 0;
+            const target = targetMatch ? parseFloat(targetMatch[1]) : 0;
+            
+            // Tìm giá hiện tại làm giá vào nếu AI không chỉ rõ
+            const raw = rawStocks.find(r => (r.s || r.ticker || "").toUpperCase().includes(s));
+            if (raw) {
+              const entry = entryMatch ? parseFloat(entryMatch[1]) : (raw.price || raw.p || 0);
+              results.push({
+                s: s,
+                r: line.trim().replace(/^\*\s*/, ''),
+                sc: 8,
+                d: "3-5",
+                e: entry,
+                t: target,
+                sl: sl,
+                w: 70
+              });
+            }
+          }
+        }
+      }
+    }
 
     return results.slice(0, 10);
 
@@ -135,9 +233,17 @@ function safeParseJSON(text) {
     cleaned = cleaned.replace(/```json|```/g, '').trim();
   }
 
-  // 2. Tìm mảng JSON [ ... ]
-  const startIdx = cleaned.indexOf('[');
-  const endIdx = cleaned.lastIndexOf(']');
+  // 2. Tìm mảng JSON [ ... ] hoặc object { ... }
+  let startIdx = cleaned.indexOf('[');
+  let endIdx = cleaned.lastIndexOf(']');
+  
+  const objStartIdx = cleaned.indexOf('{');
+  const objEndIdx = cleaned.lastIndexOf('}');
+  
+  if (objStartIdx !== -1 && (startIdx === -1 || objStartIdx < startIdx)) {
+    startIdx = objStartIdx;
+    endIdx = objEndIdx;
+  }
 
   let jsonPart = cleaned;
   if (startIdx !== -1) {
@@ -227,6 +333,48 @@ function fixTruncatedJson(str) {
  * PHASE 03: PROFESSIONAL AI ADVISOR
  * Phân tích chi tiết một mã cụ thể theo yêu cầu của User.
  */
+/**
+ * PHASE 04: DEEP RESEARCH AI
+ * Phân tích chuyên sâu kết hợp Cơ bản và Kỹ thuật.
+ */
+export async function analyzeDeepStock(symbol, contextData, settings) {
+  const prompt = `Bạn là Giám đốc Phân tích Đầu tư. Dưới đây là dữ liệu toàn diện về cổ phiếu ${symbol} (Thị trường VN):
+
+${JSON.stringify(contextData)}
+
+Nhiệm vụ:
+1. Đánh giá sức khỏe tài chính (Cơ bản) thông qua các chỉ số PE, PB, ROE, Lợi nhuận (revenue, debt_equity).
+2. Nhận định xu hướng giá, ngưỡng hỗ trợ/kháng cự từ dữ liệu kỹ thuật.
+3. Tổng hợp SWOT (Điểm mạnh, Điểm yếu, Cơ hội, Thách thức) từ cả 2 góc độ Cơ bản và Kỹ thuật.
+4. Đưa ra Khuyến nghị (MUA/BÁN/NẮM GIỮ).
+
+YÊU CẦU BẮT BUỘC: Bạn PHẢI trả về ĐÚNG ĐỊNH DẠNG JSON như sau (không chứa các khối markdown):
+{
+  "symbol": "${symbol}",
+  "score": 8,
+  "summary": "Tóm tắt 1-2 câu",
+  "technical": "Nhận định phân tích kỹ thuật",
+  "fundamental": "Nhận định cơ bản",
+  "swot": {
+    "strengths": ["..."],
+    "weaknesses": ["..."],
+    "opportunities": ["..."],
+    "threats": ["..."]
+  },
+  "action": "MUA",
+  "trading_plan": {
+    "entry": "Vùng giá mua/bán (VD: 70000 - 71000)",
+    "target": "Vùng chốt lời (VD: 78000)",
+    "stoploss": "Vùng cắt lỗ (VD: 68000)"
+  }
+}`;
+
+  const systemPrompt = "Bạn là Giám đốc Phân tích Đầu tư. Chỉ trả về đúng dữ liệu định dạng JSON thuần túy, không giải thích.";
+  const response = await queryAIWithSystem(prompt, systemPrompt, settings);
+  
+  return safeParseJSON(response);
+}
+
 /**
  * PHASE 03: PROFESSIONAL AI ADVISOR (Enhanced with Price Action)
  * Phân tích chi tiết một mã cụ thể theo yêu cầu của User.

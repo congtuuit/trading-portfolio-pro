@@ -69,3 +69,45 @@ export function calculateT0Scenario(trade, currentPrice, bouncePct, t0Qty) {
     newEntry: parseFloat(newEntry.toFixed(4)),
   };
 }
+
+/**
+ * Calculate Risk:Reward Ratio
+ * @param {number} entry
+ * @param {number} target
+ * @param {number} stoploss
+ * @param {string} type - 'BUY' or 'SELL'
+ * @returns {number|null} RR ratio (e.g. 2.0 for 1:2.0), or null if invalid
+ */
+export function calculateRR(entry, target, stoploss, type = 'BUY') {
+  if (!entry || !target || !stoploss) return null;
+  const risk = type === 'BUY' ? (entry - stoploss) : (stoploss - entry);
+  const reward = type === 'BUY' ? (target - entry) : (entry - target);
+  if (risk <= 0 || reward <= 0) return null; // Invalid setup
+  return Number((reward / risk).toFixed(2));
+}
+
+/**
+ * Parses basic Markdown into HTML (safe from XSS)
+ * @param {string} text
+ * @returns {string}
+ */
+export function parseMarkdown(text) {
+  if (!text) return "";
+  let html = escapeHTML(text);
+
+  // Headers
+  html = html.replace(/^###[ \t]+(.*?)$/gm, '<h4 style="margin: 8px 0 4px; color: #fff;">$1</h4>');
+  html = html.replace(/^##[ \t]+(.*?)$/gm, '<h3 style="margin: 10px 0 6px; color: #fff;">$1</h3>');
+  html = html.replace(/^#[ \t]+(.*?)$/gm, '<h2 style="margin: 12px 0 8px; color: #fff;">$1</h2>');
+
+  // Bold
+  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+
+  // Bullet Lists
+  html = html.replace(/^[-\*][ \t]+(.*?)$/gm, '<li style="margin-left: 14px; margin-bottom: 2px; list-style-type: disc;">$1</li>');
+
+  // Line breaks
+  html = html.replace(/\n/g, '<br/>');
+
+  return html;
+}

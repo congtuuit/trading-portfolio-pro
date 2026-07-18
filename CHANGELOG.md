@@ -2,6 +2,12 @@
 
 Tất cả các thay đổi quan trọng đối với dự án **Trading Portfolio Pro** sẽ được ghi lại tại đây.
 
+## [v2.2.0] - 2026-05-31
+### 🚀 Added
+- **Risk & Reward Engine**: Tự động tính toán tỷ lệ Rủi ro/Lợi nhuận (R:R) từ kết quả AI.
+- **Smart Filtering**: Lọc các cổ phiếu có điểm R:R thấp (theo mức chọn: Tắt, 1:1, 1:1.5, 1:2, 1:3).
+- **R:R Visual Badges**: Thẻ huy hiệu trực quan trên kết quả AI (Xanh, Vàng, Đỏ).
+
 ## [v2.1.0] - 2026-04-29
 ### 🚀 Added
 - **AI Price Action Analysis**: Nâng cấp `ai.js` để hỗ trợ phân tích mẫu hình nến và xu hướng từ dữ liệu OHLCV lịch sử.

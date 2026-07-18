@@ -8,8 +8,6 @@ import {
   savePortfolio,
   getSettings,
   saveSettings,
-  getChatHistory,
-  saveChatHistory,
   getTradeHistory,
   saveTradeHistory,
   getScannerResults,
@@ -17,13 +15,13 @@ import {
   getRawScannerResults,
   saveRawScannerResults,
   clearAllScannerData,
+  saveRankedResults,
+  getRankedResults,
   getAdviceCache,
   saveAdviceCache,
   clearAdviceCache,
-  getSystemLogs,
-  addSystemLog
 } from "./storage.js";
-import { getDivisor, escapeHTML } from "./utils.js";
+import { getDivisor, escapeHTML, calculateRR, parseMarkdown } from "./utils.js";
 import {
   renderPortfolio,
   bindFormEvents,
@@ -32,26 +30,19 @@ import {
   bindT0Events,
   populateForm,
   bindSettingsEvents,
-  bindAIEvents,
-  bindAIPortfolio,
-  bindAIDCA,
-  bindChatEvents,
-  appendChatMessage,
-  openChatPanel,
-  removeTypingIndicator,
   updateSummaryBar,
-  renderChatHistory,
   renderHistory,
   bindTabEvents,
   bindScannerEvents,
   renderScannerResults,
-  renderSystemLogs,
-  toggleModal
+  toggleModal,
+  bindDeepResearchEvents,
+  renderDeepResearch,
 } from "./ui.js";
-import { fetchPricesMap } from "./price.js";
-import { queryAI, fetchModels, screenPotentialStocks, getDetailedAdvice } from "./ai.js";
+import { fetchPricesMap, fetchDeepResearchData } from "./price.js";
+import { queryAI, fetchModels, screenPotentialStocks, getDetailedAdvice, analyzeDeepStock } from "./ai.js";
 import { prepareDataForAI } from "./scanner_data.js";
-import { fetchSymbolHistory, formatHistoryForAI } from "./history.js";
+import { rankStocks } from "./scorer.js";
 
 const REFRESH_INTERVAL_MS = 30 * 1000;
 
@@ -63,6 +54,7 @@ export async function initApp(root) {
   let chatHistory = [];
   let tradeHistory = [];
   let lastScannedData = [];
+  let caughtSignals = [];
 
   async function updatePricesAndRender() {
     const symbols = portfolio.map((t) => t.symbol);
@@ -85,6 +77,10 @@ export async function initApp(root) {
     if (!priceData || Object.keys(priceData).length === 0) {
       return { success: false, error: "Tên mã giao dịch không tồn tại trên TradingView." };
     }
+
+    tradeData.tpAlerted = false;
+    tradeData.slAlerted = false;
+    tradeData.t0Alerted = false;
 
     if (tradeData.id && tradeData.id.startsWith("trade_")) {
       const index = portfolio.findIndex((t) => t.id === tradeData.id);
@@ -111,11 +107,34 @@ export async function initApp(root) {
     updatePricesAndRender();
   }
 
-  async function handleT0(id, newEntry) {
+  async function handleT0(id, newEntry, realizedProfit) {
     const index = portfolio.findIndex((t) => t.id === id);
     if (index >= 0) {
-      portfolio[index].entryPrice = newEntry;
+      const trade = portfolio[index];
+      const divisor = getDivisor(trade.symbol);
+      trade.entryPrice = newEntry;
+      trade.tpAlerted = false;
+      trade.slAlerted = false;
+      trade.t0Alerted = false;
       await savePortfolio(portfolio);
+
+      if (realizedProfit && realizedProfit > 0) {
+        const historyRecord = {
+          id: "hist_" + Date.now() + Math.random().toString().slice(2, 5),
+          date: Date.now(),
+          symbol: trade.symbol,
+          type: trade.type === "BUY" ? "T0_BUY" : "T0_SELL",
+          qtyClosed: 0,
+          entryPrice: trade.entryPrice / divisor,
+          closePrice: (trade.entryPrice + (trade.type === "BUY" ? realizedProfit : -realizedProfit)) / divisor,
+          realizedPnl: realizedProfit
+        };
+
+        tradeHistory.push(historyRecord);
+        await saveTradeHistory(tradeHistory);
+        renderHistory(tradeHistory, root);
+      }
+
       updatePricesAndRender();
     }
   }
@@ -189,63 +208,67 @@ export async function initApp(root) {
     refreshTimer = setInterval(updatePricesAndRender, REFRESH_INTERVAL_MS);
   }
 
-  async function sendToChat(prompt) {
-    openChatPanel(root);
-    appendChatMessage("user", prompt, false, root);
-    appendChatMessage("system-typing", "", false, root);
-    chatHistory.push({ role: "user", text: prompt });
-
-    try {
-      const res = await queryAI(chatHistory, appSettings);
-      chatHistory.push({ role: "assistant", text: res });
-      removeTypingIndicator(root);
-      appendChatMessage("assistant", res.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>'), true, root);
-    } catch (err) {
-      removeTypingIndicator(root);
-      chatHistory.pop();
-      appendChatMessage("assistant", `❌ Lỗi: ${err.message}`, true, root);
-    }
-  }
-
   async function handleScanMarket() {
     const container = root.querySelector("#scanner-raw-results");
     const btnAI = root.querySelector("#btn-ai-analyze");
+    const assetTypeSelect = root.querySelector("#sel-asset-type");
+    const assetType = assetTypeSelect ? assetTypeSelect.value : "STOCKS";
+
     container.innerHTML = `
       <div class="loading-wrapper">
         <div class="hourglass"></div>
-        <div class="loading-text">Đang quét dữ liệu thị trường...</div>
+        <div class="loading-text">Đang quét dữ liệu ${assetType === "CRYPTO" ? "Crypto" : "thị trường"}...</div>
       </div>`;
 
-    chrome.runtime.sendMessage({ type: "SCAN_STOCKS" }, (res) => {
+    const msgType = assetType === "CRYPTO" ? "SCAN_CRYPTO" : "SCAN_STOCKS";
+
+    chrome.runtime.sendMessage({ type: msgType }, (res) => {
       if (res && res.success) {
         lastScannedData = res.data;
         saveRawScannerResults(res.data);
-        renderScannerResults(res.data, root, Date.now(), "#scanner-raw-results");
-        if (res.data.length > 0) btnAI.style.display = "block";
+
+        // Auto-rank all assets with score + grade immediately
+        const limitCount = assetType === "CRYPTO" ? 20 : 50;
+        const ranked = rankStocks(lastScannedData, appSettings, limitCount);
+        lastScannedData = ranked;
+        saveRankedResults(ranked); // Persist to storage
+
+        renderScannerResults(ranked, root, Date.now(), "#scanner-raw-results");
+        if (ranked.length > 0) btnAI.style.display = "block";
       } else {
         container.innerHTML = `<div class="empty-state">❌ Lỗi: ${res?.error || "Unknown"}</div>`;
       }
     });
   }
 
-  async function handleAIAnalyze(targetProfit) {
+  async function handleAIAnalyze() {
     const aiContainer = root.querySelector("#scanner-ai-results");
     const aiSection = root.querySelector("#ai-top-picks");
+    const assetTypeSelect = root.querySelector("#sel-asset-type");
+    const assetType = assetTypeSelect ? assetTypeSelect.value : "STOCKS";
+
     aiSection.style.display = "block";
     aiContainer.innerHTML = `
       <div class="loading-wrapper">
         <div class="hourglass"></div>
-        <div class="loading-text">🤖 AI đang săn tìm siêu cổ phiếu...</div>
+        <div class="loading-text">${assetType === "CRYPTO" ? "🤖 AI đang phân tích dữ liệu Crypto..." : "🤖 AI đang săn tìm siêu cổ phiếu..."}</div>
       </div>`;
-    
+
     try {
-      const cleanedData = prepareDataForAI(lastScannedData);
-      const aiResults = await screenPotentialStocks(cleanedData, targetProfit, appSettings);
-      
+      // Pre-rank assets using scorer.js before sending to AI
+      const ranked = rankStocks(lastScannedData, appSettings, 25);
+      const cleanedData = prepareDataForAI(ranked);
+      const aiResults = await screenPotentialStocks(cleanedData, 0, appSettings, assetType);
+
       const finalResults = aiResults.map(ai => {
-        const raw = lastScannedData.find(r => (r.ticker || "").includes(ai.s.toUpperCase()));
-        return raw ? { ...raw, aiReason: ai.r, aiScore: ai.sc, aiDuration: ai.d, aiEntry: ai.e, aiTarget: ai.t, aiStoploss: ai.sl, aiWinRate: ai.w } : null;
-      }).filter(Boolean).sort((a, b) => b.aiWinRate - a.aiWinRate);
+        const raw = lastScannedData.find(r => (r.symbol || "").toUpperCase() === ai.s.toUpperCase());
+        if (!raw) return null;
+        const rr = calculateRR(ai.e, ai.t, ai.sl, "BUY");
+        return { ...raw, aiReason: ai.r, aiScore: ai.sc, aiDuration: ai.d, aiEntry: ai.e, aiTarget: ai.t, aiStoploss: ai.sl, aiWinRate: ai.w, aiRR: rr };
+      }).filter(Boolean).filter(res => {
+        if (minRR > 0 && res.aiRR !== null && res.aiRR < minRR) return false;
+        return true;
+      }).sort((a, b) => b.aiWinRate - a.aiWinRate);
 
       const ts = Date.now();
       await saveScannerResults(finalResults, ts);
@@ -259,7 +282,7 @@ export async function initApp(root) {
     const cached = await getAdviceCache(symbol);
     if (cached) return showAdviceModal(symbol, cached);
 
-    let fullData = lastScannedData.find(s => (s.ticker || s.symbol || "").includes(symbol));
+    let fullData = lastScannedData.find(s => (s.ticker || s.symbol || "").toUpperCase() === symbol.toUpperCase());
     if (!fullData) return alert(`Không tìm thấy dữ liệu cho mã ${symbol}.`);
 
     const fullSymbol = fullData.ticker || fullData.symbol;
@@ -270,12 +293,8 @@ export async function initApp(root) {
       </div>`);
 
     try {
-      // Fetch 20 phiên lịch sử (hoặc theo cấu hình settings.lookbackPeriods)
-      const lookback = appSettings.lookbackPeriods || 20;
-      const history = await fetchSymbolHistory(fullSymbol, lookback);
-      const historyText = formatHistoryForAI(history, symbol);
-
-      const advice = await getDetailedAdvice(fullSymbol, fullData, appSettings, historyText);
+      // Lấy dữ liệu cơ bản + kĩ thuật từ Scanner TradingView (không dùng lịch sử)
+      const advice = await getDetailedAdvice(fullSymbol, fullData, appSettings, "");
       await saveAdviceCache(fullSymbol, advice);
       showAdviceModal(fullSymbol, advice);
     } catch (err) {
@@ -286,19 +305,36 @@ export async function initApp(root) {
   function showAdviceModal(symbol, content) {
     root.querySelector("#modal-title").innerHTML = `AI Advisor: <strong>${symbol.split(':')[1] || symbol}</strong>`;
     const body = root.querySelector("#modal-body");
-    if (content.includes("empty-state")) {
+    if (content.includes("empty-state") || content.includes("loading-wrapper")) {
       body.innerHTML = content;
     } else {
-      const formatted = escapeHTML(content).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br/>');
+      const formatted = parseMarkdown(content);
       body.innerHTML = `<div style="font-size:13px; line-height:1.6;">${formatted}</div>`;
     }
     toggleModal(root, "modal-analysis", true);
   }
 
-  function handleViewRaw(symbol, rawData) {
-    root.querySelector("#modal-title").innerHTML = `Raw: <strong>${symbol}</strong>`;
-    root.querySelector("#modal-body").innerHTML = `<pre style="background:rgba(0,0,0,0.2); padding:10px; border-radius:6px; font-size:11px; overflow:auto; max-height:350px;">${JSON.stringify(rawData, null, 2)}</pre>`;
-    toggleModal(root, "modal-analysis", true);
+  async function handleDeepResearch(symbol) {
+    renderDeepResearch({ symbol, summary: "Đang tải dữ liệu và phân tích...", score: 0 }, root);
+    try {
+      // Fetch TradingView data (Technical & Fundamental)
+      const snapshot = await fetchDeepResearchData(symbol);
+
+      if (!snapshot) {
+        throw new Error("Không thể lấy dữ liệu từ TradingView.");
+      }
+      
+      // Combine data
+      const contextData = {
+        symbol: symbol,
+        technical_and_fundamental: snapshot || {}
+      };
+      
+      const analysis = await analyzeDeepStock(symbol, contextData, appSettings);
+      renderDeepResearch(analysis, root);
+    } catch (err) {
+      renderDeepResearch({ symbol, error: err.message }, root);
+    }
   }
 
   function initExportImport() {
@@ -336,18 +372,24 @@ export async function initApp(root) {
 
   portfolio = await getPortfolio();
   appSettings = await getSettings();
-  chatHistory = await getChatHistory();
   tradeHistory = await getTradeHistory();
   const scannerCache = await getScannerResults();
   const rawCache = await getRawScannerResults();
+  const rankedCache = await getRankedResults();
 
-  renderChatHistory(chatHistory, root);
   renderHistory(tradeHistory, root);
 
-  // Khôi phục dữ liệu Quét Gốc
-  if (rawCache.length > 0) {
-    lastScannedData = rawCache;
-    renderScannerResults(rawCache, root, null, "#scanner-raw-results");
+  // Khôi phục dữ liệu đã xếp hạng (ưu tiên > raw)
+  if (rankedCache.length > 0) {
+    lastScannedData = rankedCache;
+    renderScannerResults(rankedCache, root, null, "#scanner-raw-results");
+    root.querySelector("#btn-ai-analyze").style.display = "block";
+  } else if (rawCache.length > 0) {
+    // Fallback: nếu chưa có ranked, rank từ raw rồi lưu lại
+    const ranked = rankStocks(rawCache, appSettings, 50);
+    lastScannedData = ranked;
+    saveRankedResults(ranked);
+    renderScannerResults(ranked, root, null, "#scanner-raw-results");
     root.querySelector("#btn-ai-analyze").style.display = "block";
   }
 
@@ -357,24 +399,7 @@ export async function initApp(root) {
     renderScannerResults(scannerCache.results, root, scannerCache.timestamp, "#scanner-ai-results");
   }
 
-  bindFormEvents(handleSave, root);
-  bindCloseEvents(handleTakeProfit, root);
-  bindHistoryEvents(handleClearHistory, root);
-  bindT0Events(handleT0, root);
-  bindTabEvents(root);
-  bindScannerEvents(handleScanMarket, handleAIAnalyze, handleAskAdvisor, handleViewRaw, root);
-
-  // Tab Nhật ký logic
-  const logTabBtn = root.querySelector('.tab-btn[data-target="section-logs"]');
-  if (logTabBtn) {
-    logTabBtn.addEventListener('click', async () => {
-      const logs = await getSystemLogs();
-      renderSystemLogs(logs, root);
-    });
-  }
-
   setupCoreBindings();
-  setupAIBindings();
   setupScannerBindings();
   setupManagementBindings();
 
@@ -389,47 +414,16 @@ export async function initApp(root) {
     bindHistoryEvents(handleClearHistory, root);
     bindT0Events(handleT0, root);
     bindTabEvents(root);
-    bindSettingsEvents(appSettings, async (s) => { appSettings = s; await saveSettings(s); }, fetchModels, root);
+    bindDeepResearchEvents(handleDeepResearch, root);
+    bindSettingsEvents(appSettings, async (s) => {
+      appSettings = s;
+      await saveSettings(s);
+    }, fetchModels, root);
     initExportImport();
   }
 
-  function setupAIBindings() {
-    bindChatEvents(async (t) => {
-      chatHistory.push({ role: "user", text: t }); await saveChatHistory(chatHistory);
-      const res = await queryAI(chatHistory, appSettings);
-      chatHistory.push({ role: "assistant", text: res }); await saveChatHistory(chatHistory);
-      return res;
-    }, async () => { chatHistory = []; await saveChatHistory(chatHistory); }, root);
-
-    bindAIEvents((sym, data, type) => {
-      sendToChat(`Trading: Mã ${sym}, Vị thế ${type}. Giá:${data.close}, RSI:${Math.round(data.rsi)}. Có nên vào không? (3 câu)`);
-    }, root);
-
-    bindAIPortfolio(() => {
-      if (portfolio.length === 0) return alert("Danh mục trống.");
-      let ctx = "Danh mục:\nMã | Lệnh | Qty | Entry | PnL%\n";
-      portfolio.forEach((t) => {
-        const pData = currentPriceMap[t.symbol] || { close: t.entryPrice };
-        const pct = (t.type === "BUY" ? (pData.close - t.entryPrice) : (t.entryPrice - pData.close)) / t.entryPrice * 100;
-        ctx += `- ${t.symbol} | ${t.type} | ${t.quantity} | ${t.entryPrice} | ${pct.toFixed(2)}%\n`;
-      });
-      sendToChat(ctx + "\nNhận xét sức khỏe danh mục và lời khuyên ngắn.");
-    }, root);
-
-    bindAIDCA((trade, currentPrice) => {
-      const d = currentPriceMap[trade.symbol] || {};
-      const pct = (trade.type === "BUY" ? (currentPrice - trade.entryPrice) : (trade.entryPrice - currentPrice)) / trade.entryPrice * 100;
-      sendToChat(`DCA ${trade.symbol} (${trade.type}): Lỗ ${pct.toFixed(2)}%. Giá: ${currentPrice}, RSI: ${Math.round(d.rsi)}. Có nên DCA không?`);
-      toggleModal(root, "modal-dca", false);
-    }, root);
-
-    root.querySelector('#btn-clear-cache')?.addEventListener('click', async () => {
-      if (confirm('Xóa bộ nhớ đệm AI?')) { await clearAdviceCache(); alert('Đã xóa cache!'); }
-    });
-  }
-
   function setupScannerBindings() {
-    bindScannerEvents(handleScanMarket, handleAIAnalyze, handleAskAdvisor, handleViewRaw, root);
+    bindScannerEvents(handleScanMarket, handleAIAnalyze, handleAskAdvisor, root);
     root.querySelector('#btn-clear-scanner')?.addEventListener('click', async () => {
       if (confirm('Xóa kết quả quét?')) {
         await clearAllScannerData();
@@ -451,11 +445,8 @@ export async function initApp(root) {
   }
 
   function setupManagementBindings() {
-    root.querySelector('.tab-btn[data-target="section-logs"]')?.addEventListener('click', async () => {
-      renderSystemLogs(await getSystemLogs(), root);
-    });
-    root.querySelector('#btn-clear-logs')?.addEventListener('click', async () => {
-      if (confirm('Xóa nhật ký?')) { await chrome.storage.local.remove('tpp_logs'); renderSystemLogs([], root); }
+    root.querySelector('#btn-clear-cache')?.addEventListener('click', async () => {
+      if (confirm('Xóa bộ nhớ đệm AI?')) { await clearAdviceCache(); alert('Đã xóa cache!'); }
     });
   }
 }
