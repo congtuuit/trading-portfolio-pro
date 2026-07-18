@@ -148,7 +148,13 @@
       <div class="advisor-header" style="display:flex; flex-direction:column; gap:10px; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:12px;">
         <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
           <div style="display:flex; align-items:center; gap:8px;">
-            <div class="list-title" style="margin-bottom: 0;">🚀 Săn Cổ Phiếu</div>
+            <div class="list-title" style="margin-bottom: 0; display:flex; align-items:center; gap:6px;">
+              <span>🚀 Săn Tín Hiệu:</span>
+              <select id="sel-asset-type" class="btn" style="background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); padding:2px 6px; font-size:11px; height:22px; border-radius:4px; cursor:pointer; font-weight:600; outline:none;">
+                <option value="STOCKS">📈 Cổ Phiếu VN</option>
+                <option value="CRYPTO">🪙 Crypto Top 20</option>
+              </select>
+            </div>
             <button id="btn-clear-scanner" class="btn"
               style="background:none; border:none; color:var(--text-muted); font-size:11px; cursor:pointer; padding:0;" data-tooltip="Xóa danh sách quét hiện tại">🗑 Xóa</button>
           </div>

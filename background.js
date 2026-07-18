@@ -13,7 +13,7 @@ import { fetchPricesMap, fetchDeepResearchData } from "./price.js";
 import { getDivisor } from "./utils.js";
 import { sendTelegramMessage } from "./telegram.js";
 import { suggestEntryExit } from "./analysis.js";
-import { scanVietnamStocks } from "./scanner_data.js";
+import { scanVietnamStocks, scanCryptoCoins } from "./scanner_data.js";
 
 const MONITOR_ALARM = "tpp_monitor_alarm";
 const MONITOR_INTERVAL_MINS = 10;
@@ -185,6 +185,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       } catch (err) {
         console.error("[TPP] Scan error (Sync):", err);
         addSystemLog('ERROR', 'SCAN_STOCKS Failed (Sync)', err.message);
+        sendResponse({ success: false, error: err.message });
+      }
+      return true;
+
+    case "SCAN_CRYPTO":
+      console.log("[TPP] Starting scanCryptoCoins...");
+      addSystemLog('API', 'SCAN_CRYPTO Request', 'Scanning Crypto market...');
+      try {
+        scanCryptoCoins()
+          .then(data => {
+            console.log("[TPP] Crypto scan success, count:", data ? data.length : 0);
+            addSystemLog('API', 'SCAN_CRYPTO Response', data);
+            sendResponse({ success: true, data: data || [] });
+          })
+          .catch(err => {
+            console.error("[TPP] Crypto scan error (Promise):", err);
+            addSystemLog('ERROR', 'SCAN_CRYPTO Failed (Promise)', err.message);
+            sendResponse({ success: false, error: err.message });
+          });
+      } catch (err) {
+        console.error("[TPP] Crypto scan error (Sync):", err);
+        addSystemLog('ERROR', 'SCAN_CRYPTO Failed (Sync)', err.message);
         sendResponse({ success: false, error: err.message });
       }
       return true;

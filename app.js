@@ -211,19 +211,25 @@ export async function initApp(root) {
   async function handleScanMarket() {
     const container = root.querySelector("#scanner-raw-results");
     const btnAI = root.querySelector("#btn-ai-analyze");
+    const assetTypeSelect = root.querySelector("#sel-asset-type");
+    const assetType = assetTypeSelect ? assetTypeSelect.value : "STOCKS";
+
     container.innerHTML = `
       <div class="loading-wrapper">
         <div class="hourglass"></div>
-        <div class="loading-text">Đang quét dữ liệu thị trường...</div>
+        <div class="loading-text">Đang quét dữ liệu ${assetType === "CRYPTO" ? "Crypto" : "thị trường"}...</div>
       </div>`;
 
-    chrome.runtime.sendMessage({ type: "SCAN_STOCKS" }, (res) => {
+    const msgType = assetType === "CRYPTO" ? "SCAN_CRYPTO" : "SCAN_STOCKS";
+
+    chrome.runtime.sendMessage({ type: msgType }, (res) => {
       if (res && res.success) {
         lastScannedData = res.data;
         saveRawScannerResults(res.data);
 
-        // Auto-rank all stocks with score + grade immediately
-        const ranked = rankStocks(lastScannedData, appSettings, 50);
+        // Auto-rank all assets with score + grade immediately
+        const limitCount = assetType === "CRYPTO" ? 20 : 50;
+        const ranked = rankStocks(lastScannedData, appSettings, limitCount);
         lastScannedData = ranked;
         saveRankedResults(ranked); // Persist to storage
 
@@ -238,18 +244,21 @@ export async function initApp(root) {
   async function handleAIAnalyze() {
     const aiContainer = root.querySelector("#scanner-ai-results");
     const aiSection = root.querySelector("#ai-top-picks");
+    const assetTypeSelect = root.querySelector("#sel-asset-type");
+    const assetType = assetTypeSelect ? assetTypeSelect.value : "STOCKS";
+
     aiSection.style.display = "block";
     aiContainer.innerHTML = `
       <div class="loading-wrapper">
         <div class="hourglass"></div>
-        <div class="loading-text">🤖 AI đang săn tìm siêu cổ phiếu...</div>
+        <div class="loading-text">${assetType === "CRYPTO" ? "🤖 AI đang phân tích dữ liệu Crypto..." : "🤖 AI đang săn tìm siêu cổ phiếu..."}</div>
       </div>`;
-    
+
     try {
-      // Pre-rank stocks using scorer.js before sending to AI
+      // Pre-rank assets using scorer.js before sending to AI
       const ranked = rankStocks(lastScannedData, appSettings, 25);
       const cleanedData = prepareDataForAI(ranked);
-      const aiResults = await screenPotentialStocks(cleanedData, 0, appSettings);
+      const aiResults = await screenPotentialStocks(cleanedData, 0, appSettings, assetType);
 
       const finalResults = aiResults.map(ai => {
         const raw = lastScannedData.find(r => (r.symbol || "").toUpperCase() === ai.s.toUpperCase());

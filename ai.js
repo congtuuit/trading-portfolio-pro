@@ -44,7 +44,7 @@ export async function queryAI(inputData, settings) {
 /**
  * PHASE 02: SMART SCREENER (STABLE VERSION)
  */
-export async function screenPotentialStocks(rawStocks, targetProfit, settings) {
+export async function screenPotentialStocks(rawStocks, targetProfit, settings, assetType = "STOCKS") {
   try {
     // 1. Inject user profile into the prompt
     const profile = {
@@ -52,8 +52,14 @@ export async function screenPotentialStocks(rawStocks, targetProfit, settings) {
       risk_level: settings.riskLevel || "trung bình"
     };
 
-    const styleLabel = profile.trading_style === "lướt sóng" ? "LƯỚT SÓNG (Scalping, T+0 ~ T+3)" :
-      profile.trading_style === "swing" ? "SWING (Ngắn hạn, T+3 ~ T+10)" : "ĐẦU TƯ DÀI HẠN (Position, T+20 trở lên)";
+    const isCrypto = assetType === "CRYPTO";
+
+    const styleLabel = profile.trading_style === "lướt sóng" ?
+      (isCrypto ? "LƯỚT SÓNG (Scalping, 1h ~ 1 ngày)" : "LƯỚT SÓNG (Scalping, T+0 ~ T+3)") :
+      profile.trading_style === "swing" ?
+      (isCrypto ? "SWING (Ngắn hạn, 3 ~ 10 ngày)" : "SWING (Ngắn hạn, T+3 ~ T+10)") :
+      (isCrypto ? "ĐẦU TƯ DÀI HẠN (Position, 20 ngày trở lên)" : "ĐẦU TƯ DÀI HẠN (Position, T+20 trở lên)");
+
     const riskLabel = profile.risk_level === "cao" ? "CHẤP NHẬN RỦI RO CAO (ưu tiên lợi nhuận, chấp nhận biến động mạnh)" :
       profile.risk_level === "thấp" ? "AN TOÀN (ưu tiên bảo toàn vốn)" : "TRUNG BÌNH (cân bằng rủi ro-lợi nhuận)";
 
@@ -78,7 +84,23 @@ export async function screenPotentialStocks(rawStocks, targetProfit, settings) {
 
     const cleanedData = JSON.stringify(compactData);
 
-    const prompt = `CHỌN 8 CP TỐT NHẤT từ dữ liệu đã chấm điểm:
+    const prompt = isCrypto ?
+    `CHỌN 8 COINS TỐT NHẤT từ dữ liệu đã chấm điểm:
+${cleanedData}
+
+Hồ sơ NĐT: ${styleLabel} | ${riskLabel}
+
+Yêu cầu: Phân tích kỹ thuật (xu hướng EMA, động lượng RSI/MACD, volume) để chọn các đồng coin phù hợp nhất với hồ sơ trên.
+- Lướt sóng: RSI 50-70, volume đột biến, giá>EMA20, R:R>=1.5
+- Swing: giá>EMA20>EMA50, MACD tăng, volume ổn định, R:R>=2
+- Dài hạn: giá>EMA200, vào tại BB lower/EMA50, R:R>=2
+
+Lưu ý quan trọng về giá: Các mức giá vào (e), mục tiêu (t), cắt lỗ (sl) phải khớp với định dạng giá thực tế của coin đó trong danh sách (Ví dụ: BTCUSDT là 63906, SOLUSDT là 75.09, PEPEUSDT là 0.0000085). Không được nhân hay chia giá cho 1000.
+
+CHỈ trả về JSON array thuần (KHÔNG markdown, KHÔNG giải thích):
+[{"s":"BTCUSDT","r":"Lý do ngắn gọn","sc":8.5,"d":"3-5 ngày","e":63500,"t":68000,"sl":61500,"w":75}]`
+    :
+    `CHỌN 8 CP TỐT NHẤT từ dữ liệu đã chấm điểm:
 ${cleanedData}
 
 Hồ sơ NĐT: ${styleLabel} | ${riskLabel}
@@ -91,7 +113,9 @@ Yêu cầu: Phân tích kỹ thuật (xu hướng EMA, động lượng RSI/MACD
 CHỈ trả về JSON array thuần (KHÔNG markdown, KHÔNG giải thích):
 [{"s":"Mã","r":"Lý do ngắn gọn","sc":8.5,"d":"3-5","e":14500,"t":16000,"sl":13800,"w":75}]`;
 
-    const systemPrompt = `Chuyên gia PTKT, phong cách ${profile.trading_style}, khẩu vị ${profile.risk_level}. Output: JSON array thuần, không markdown, không text thừa.`;
+    const systemPrompt = isCrypto ?
+      `Chuyên gia PTKT Crypto, phong cách ${profile.trading_style}, khẩu vị ${profile.risk_level}. Output: JSON array thuần, không markdown, không text thừa.` :
+      `Chuyên gia PTKT, phong cách ${profile.trading_style}, khẩu vị ${profile.risk_level}. Output: JSON array thuần, không markdown, không text thừa.`;
 
     const response = await queryAIWithSystem(prompt, systemPrompt, settings);
 

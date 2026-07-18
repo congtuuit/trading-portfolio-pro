@@ -15,6 +15,19 @@ function fmt(n) {
     maximumFractionDigits: 2,
   });
 }
+/** Format price according to its scale (supporting crypto and tiny decimal values) */
+function fmtPrice(n) {
+  const num = Number(n);
+  if (isNaN(num)) return "0.00";
+  if (num === 0) return "0.00";
+  if (num < 0.0001) return num.toFixed(8);
+  if (num < 0.01) return num.toFixed(6);
+  if (num < 1) return num.toFixed(4);
+  return num.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
 /** Format a number to 2 decimal places with sign */
 function fmtSigned(n) {
   return (n >= 0 ? "+" : "") + fmt(n);
@@ -315,63 +328,95 @@ export function renderScannerResults(results, root = document, timestamp = null,
     const ticker = res.ticker || res.symbol || res.s;
     const displayTicker = res.s || (res.symbol && res.symbol.includes(':') ? res.symbol.split(':')[1] : res.symbol) || ticker;
     const tvUrl = `https://vn.tradingview.com/chart/?symbol=${ticker}`;
+    const isCrypto = res.type === "crypto" || res.subtype === "crypto";
+
+    // Format Volume
+    const volVal = res.volume;
+    let volStr = "0";
+    if (volVal >= 1000000) {
+      volStr = (volVal / 1000000).toFixed(1) + "M";
+    } else if (volVal >= 1000) {
+      volStr = (volVal / 1000).toFixed(0) + "K";
+    } else if (volVal) {
+      volStr = volVal.toString();
+    }
+
+    // Format Volume Ratio
+    const volRatio = res.volume && res.avgVolume10d ? (res.volume / res.avgVolume10d) : 1;
+    const ratioStr = volRatio > 1.05 || volRatio < 0.95 ? `x${volRatio.toFixed(1)}` : "";
 
     return `
       <div class="scanner-card ${isAIList ? 'ai-card' : ''}" data-symbol="${ticker}" data-raw='${JSON.stringify(res).replace(/'/g, "&apos;")}'>
-        <div class="scanner-main">
-          <div style="display:flex; align-items:center; gap:6px;">
+        <!-- Row 1: Header (Symbol, Name, Rating badges) -->
+        <div class="scanner-header">
+          <div class="scanner-symbol-group">
             <a href="${tvUrl}" target="_self" class="ticker-link" data-tooltip="Xem biểu đồ TradingView (tab hiện tại)">
               <span class="scanner-ticker">${displayTicker}</span>
               <span style="font-size:11px;">📈</span>
             </a>
-          <span class="scanner-name">${res.description || res.name}</span>
-        ${res._grade ? `<span style="margin-left:auto;font-size:9px;font-weight:700;padding:1px 6px;border-radius:8px;background:${gradeColor(res._grade)};color:white;">${res._grade}</span>` : ''}
-        </div>
-        <div class="scanner-price-info" style="display:flex;align-items:center;gap:8px;justify-content:space-between;">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <div class="scanner-price">${fmt(res.price)}</div>
-            ${res._score ? `<span style="font-size:10px;color:var(--text-muted);">${res._score}/100</span>` : ''}
+            <span class="scanner-name" title="${res.description || res.name || ''}">${res.description || res.name || ''}</span>
           </div>
-          <div class="scanner-change-badge ${res.changePercent >= 0 ? 'profit' : 'loss'}">
-            ${fmtSigned(res.changePercent)}%
+          <div class="scanner-rating-group">
+            ${res._score ? `<span class="scanner-score" data-tooltip="Điểm số kỹ thuật: ${res._score}/100">${res._score}/100</span>` : ''}
+            ${res._grade ? `<span class="scanner-grade-badge" style="background:${gradeColor(res._grade)};" data-tooltip="Xếp hạng: ${res._grade}">${res._grade}</span>` : ''}
           </div>
         </div>
-      
-        ${res._gradeLabel ? `<div style="font-size:10px;color:var(--text-muted);margin-top:4px;padding:4px 8px;background:rgba(255,255,255,0.03);border-radius:4px;"><strong>${res._grade}:</strong> ${res._gradeLabel}</div>` : ''}
-        ${res._winRate ? `<div style="display:flex;gap:12px;font-size:10px;color:var(--text-muted);margin-top:2px;">
-          <span>🎯 Win Rate: <strong style="color:var(--profit);">${res._winRate}%</strong></span>
-          <span>📅 Kỳ vọng: <strong>${res._sessions}</strong></span>
-          ${res._breakoutDist !== undefined ? `<span>📊 Breakout: <strong style="color:${res._breakingOut ? 'var(--profit)' : res._nearResistance ? '#f1c40f' : 'var(--text-muted)'};">${res._breakoutDist}%</strong></span>` : ''}
+
+        <!-- Row 2: Price, Change, and Technical Indicators -->
+        <div class="scanner-row scanner-price-row">
+          <div class="scanner-price-group">
+            <span class="scanner-price">${fmtPrice(res.price)}</span>
+            <span class="scanner-change-badge ${res.changePercent >= 0 ? 'profit' : 'loss'}">
+              ${fmtSigned(res.changePercent)}%
+            </span>
+          </div>
+          <div class="scanner-tech-group">
+            <span class="tech-badge" data-tooltip="Chỉ số RSI (14 phiên)">RSI: <strong>${Math.round(res.rsi || 50)}</strong></span>
+            <span class="tech-badge" data-tooltip="Khối lượng giao dịch & tỷ lệ so với trung bình 10 ngày">Vol: <strong>${volStr}</strong>${ratioStr ? `<span class="vol-ratio">${ratioStr}</span>` : ''}</span>
+          </div>
+        </div>
+
+        <!-- Row 3: Holding Expectations & Breakout Projections -->
+        ${res._winRate ? `
+        <div class="scanner-row scanner-strategy-row">
+          <span class="strategy-badge" data-tooltip="Xác suất thắng dự kiến">🎯 Win Rate: <strong style="color:var(--profit);">${res._winRate}%</strong></span>
+          <span class="strategy-badge" data-tooltip="Thời gian nắm giữ kỳ vọng">📅 Kỳ vọng: <strong>${res._sessions}</strong></span>
+          ${res._breakoutDist !== undefined ? `
+          <span class="strategy-badge" data-tooltip="Khoảng cách tới kháng cự / điểm breakout">📊 Breakout: <strong style="color:${res._breakingOut ? 'var(--profit)' : res._nearResistance ? '#f1c40f' : 'var(--text-muted)'};">${res._breakoutDist}%</strong></span>
+          ` : ''}
         </div>` : ''}
-${isAIList ? `
-          <div class="ai-reason">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <span>🤖 <strong>AI:</strong></span>
-          ${res.aiScore ? `<span style="background:${res.aiScore >= 8 ? 'var(--profit)' : 'var(--warning, #f1c40f)'}; color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:bold;">An toàn: ${res.aiScore}/10</span>` : ''}
-        </div>
-        <div style="font-size:11px; margin-bottom:8px; line-height:1.4; color:var(--text-primary); opacity:0.9;">
-          ${parseMarkdown(res.aiReason || '')}
-        </div>
-        
-        <!-- Bảng kế hoạch giao dịch chi tiết -->
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; background:rgba(255,255,255,0.02); padding:8px; border-radius:6px; border:1px solid var(--border);">
-          <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--accent-blue);">📥 Vào: <strong style="color:var(--text-primary);">${res.aiEntry || 'N/A'}</strong></div>
-          <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--warning, #f1c40f);">⏳ Giữ: <strong style="color:var(--warning, #f1c40f);">${res.aiDuration || 0} phiên</strong></div>
-          <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--profit);">🎯 Target: <strong style="color:var(--profit);">${res.aiTarget || 'N/A'}</strong></div>
-          <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--loss);">🛡️ Cắt lỗ: <strong style="color:var(--loss);">${res.aiStoploss || 'N/A'}</strong></div>
-          <div style="font-size:10px; grid-column: span 2; border-top: 1px solid rgba(255,255,255,0.05); padding-top:4px; margin-top:2px; display:flex; justify-content:space-between; align-items:center;">
-            <span>🔥 Xác suất thắng: <strong style="color:#00e676;">${res.aiWinRate || 0}%</strong></span>
-            ${res.aiRR ? `<span style="background:${res.aiRR >= 2 ? 'var(--profit)' : (res.aiRR >= 1.5 ? 'var(--warning, #f1c40f)' : 'var(--loss)')}; color:white; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:9px;">R:R = 1:${res.aiRR}</span>` : ''}
+
+        <!-- Row 4: Detailed Rating Explanation -->
+        ${res._gradeLabel ? `
+        <div class="scanner-desc-box" style="border-left-color: ${gradeColor(res._grade)}">
+          <strong>${res._grade}:</strong> ${res._gradeLabel}
+        </div>` : ''}
+
+        <!-- AI Plan section (Only for AI advisor list) -->
+        ${isAIList ? `
+        <div class="ai-reason" style="margin-top: 8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span>🤖 <strong>AI Phân Tích:</strong></span>
+            ${res.aiScore ? `<span style="background:${res.aiScore >= 8 ? 'var(--profit)' : 'var(--warning, #f1c40f)'}; color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:bold;">Độ an toàn: ${res.aiScore}/10</span>` : ''}
+          </div>
+          <div style="font-size:11px; margin-bottom:8px; line-height:1.4; color:var(--text-primary); opacity:0.9;">
+            ${parseMarkdown(res.aiReason || '')}
+          </div>
+
+          <!-- Bảng kế hoạch giao dịch chi tiết -->
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; background:rgba(255,255,255,0.02); padding:8px; border-radius:6px; border:1px solid var(--border);">
+            <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--accent-blue);">📥 Vào: <strong style="color:var(--text-primary);">${res.aiEntry || 'N/A'}</strong></div>
+            <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--warning, #f1c40f);">⏳ Giữ: <strong style="color:var(--warning, #f1c40f);">${res.aiDuration || 0} ${isCrypto ? 'ngày' : 'phiên'}</strong></div>
+            <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--profit);">🎯 Target: <strong style="color:var(--profit);">${res.aiTarget || 'N/A'}</strong></div>
+            <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--loss);">🛡️ Cắt lỗ: <strong style="color:var(--loss);">${res.aiStoploss || 'N/A'}</strong></div>
+            <div style="font-size:10px; grid-column: span 2; border-top: 1px solid rgba(255,255,255,0.05); padding-top:4px; margin-top:2px; display:flex; justify-content:space-between; align-items:center;">
+              <span>🔥 Xác suất thắng: <strong style="color:#00e676;">${res.aiWinRate || 0}%</strong></span>
+              ${res.aiRR ? `<span style="background:${res.aiRR >= 2 ? 'var(--profit)' : (res.aiRR >= 1.5 ? 'var(--warning, #f1c40f)' : 'var(--loss)')}; color:white; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:9px;">R:R = 1:${res.aiRR}</span>` : ''}
+            </div>
           </div>
         </div>
+        ` : ''}
       </div>
-      <div class="scanner-stats">
-        <div style="display:flex; gap:12px;">
-          <span>RSI: <span class="stat-val">${Math.round(res.rsi)}</span></span>
-          <span>Vol: <span class="stat-val">${(res.volume / 1000000).toFixed(1)}M</span></span>
-        </div>
-      </div>
-      ` : ''}
     `;
   }).join("");
 

@@ -17,7 +17,7 @@ export async function scanVietnamStocks() {
       { left: "type", operation: "equal", right: "stock" },
       { left: "typespecs", operation: "has", right: ["common"] },
       { left: "volume", operation: "greater", right: 100000 },
-      { left: "change", operation: "greater", right: 0.5 },
+      { left: "change", operation: "greater", right: -2.5 },
       { left: "active_symbol", operation: "equal", right: true }
     ],
     options: { lang: "en" },
@@ -51,7 +51,7 @@ export async function scanVietnamStocks() {
       "minmove2"
     ],
     sort: { sortBy: "volume", sortOrder: "desc" },
-    range: [0, 50]
+    range: [0, 150]
   };
 
   try {
@@ -125,6 +125,157 @@ export async function scanVietnamStocks() {
 
   } catch (err) {
     console.error("[SCAN FAILED]", err);
+    return [];
+  }
+}
+
+/**
+ * Scan top 30 crypto coins on Binance for potential trades.
+ */
+export async function scanCryptoCoins() {
+  console.log("scanCryptoCoins");
+
+  const url = "https://scanner.tradingview.com/crypto/scan";
+
+  const body = {
+    filter: [],
+    options: { lang: "en" },
+    markets: ["crypto"],
+    symbols: {
+      query: { types: [] },
+      tickers: [
+        "BINANCE:BTCUSDT",
+        "BINANCE:ETHUSDT",
+        "BINANCE:SOLUSDT",
+        "BINANCE:XRPUSDT",
+        "BINANCE:BNBUSDT",
+        "BINANCE:DOGEUSDT",
+        "BINANCE:ADAUSDT",
+        "BINANCE:TRXUSDT",
+        "BINANCE:SHIBUSDT",
+        "BINANCE:AVAXUSDT",
+        "BINANCE:DOTUSDT",
+        "BINANCE:LINKUSDT",
+        "BINANCE:NEARUSDT",
+        "BINANCE:LTCUSDT",
+        "BINANCE:BCHUSDT",
+        "BINANCE:UNIUSDT",
+        "BINANCE:PEPEUSDT",
+        "BINANCE:SUIUSDT",
+        "BINANCE:APTUSDT",
+        "BINANCE:FETUSDT",
+        "BINANCE:OPUSDT",
+        "BINANCE:ARBUSDT",
+        "BINANCE:RENDERUSDT",
+        "BINANCE:WIFUSDT",
+        "BINANCE:IMXUSDT",
+        "BINANCE:GRTUSDT",
+        "BINANCE:FILUSDT",
+        "BINANCE:ICPUSDT",
+        "BINANCE:AAVEUSDT",
+        "BINANCE:TIAUSDT"
+      ]
+    },
+    columns: [
+      "name",
+      "close",
+      "change",
+      "change_abs",
+      "volume",
+      "average_volume_10d_calc",
+      "RSI",
+      "ATR",
+      "EMA20",
+      "EMA50",
+      "EMA200",
+      "BB.lower",
+      "BB.upper",
+      "MACD.macd",
+      "MACD.signal",
+      "high",
+      "low",
+      "description",
+      "type",
+      "subtype",
+      "update_mode",
+      "pricescale",
+      "minmov",
+      "fractional",
+      "minmove2"
+    ]
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify(body)
+    });
+
+    if (!res.ok) {
+      console.error("[SCAN CRYPTO ERROR]", res.status);
+      return [];
+    }
+
+    const json = await res.json();
+    if (!json?.data) return [];
+
+    return json.data.map(item => {
+      const d = item.d || [];
+
+      const tickerFull = item.s;          // BINANCE:BTCUSDT
+      const [exchange, symbol] = tickerFull.split(":");
+
+      return {
+        // ===== IDENTIFY =====
+        ticker: tickerFull,
+        symbol,
+        exchange,
+
+        // ===== BASIC =====
+        name: d[0],
+        price: d[1],
+        changePercent: d[2],
+        changeValue: d[3],
+
+        // ===== LIQUIDITY =====
+        volume: d[4],
+        avgVolume10d: d[5],
+        relativeVolume: d[5] ? d[4] / d[5] : null,
+
+        // ===== TECHNICAL =====
+        rsi: d[6],
+        atr: d[7],
+        ema20: d[8],
+        ema50: d[9],
+        ema200: d[10],
+        bb_lower: d[11],
+        bb_upper: d[12],
+        macd: d[13],
+        macdSignal: d[14],
+
+        // ===== PRICE RANGE =====
+        high: d[15],
+        low: d[16],
+
+        // ===== META =====
+        description: d[17],
+        type: d[18],
+        subtype: d[19],
+
+        // ===== EXTRA =====
+        priceScale: d[21],
+        minMove: d[22],
+
+        // ===== CUSTOM SIGNALS =====
+        isUptrend: d[1] > d[8],
+        isMACDBullish: d[13] > d[14],
+        isRSIHot: d[6] > 70
+      };
+    });
+
+  } catch (err) {
+    console.error("[SCAN CRYPTO FAILED]", err);
     return [];
   }
 }

@@ -22,7 +22,7 @@ export function scoreStock(s, profile = {}) {
   const bbLower = s.bb_lower || 0;
   const bbUpper = s.bb_upper || 0;
   const macd = s.macd || 0;
-  const macdSignal = s.macd_signal || 0;
+  const macdSignal = s.macdSignal || s.macd_signal || 0;
   const vol = s.volume || 0;
   const volAvg = s.avgVolume10d || 1;
   const high = s.high || price;
@@ -36,23 +36,30 @@ export function scoreStock(s, profile = {}) {
   const isUptrend = price > ema20 && ema20 > ema50;
   const isDowntrend = price < ema20 && ema20 < ema50;
   const emaGap = ((price - ema200) / ema200) * 100;
+  const priceAboveEma200 = price > ema200;
+
+  // Support proximity — price within 2% of EMA50 or EMA200
+  const nearEma50 = Math.abs(price - ema50) / ema50 <= 0.02;
+  const nearEma200 = Math.abs(price - ema200) / ema200 <= 0.02;
 
   if (style === "dài hạn") {
-    // Long-term cares about EMA200 alignment & distance above it
     if (price > ema200 && ema200 > ema50 * 0.97) trendScore += 15;
     if (price > ema50) trendScore += 10;
-    if (emaGap > 0 && emaGap < 30) trendScore += 5; // healthy distance
+    if (emaGap > 0 && emaGap < 30) trendScore += 5;
     if (isUptrend) trendScore += 15;
-    if (isDowntrend) trendScore -= 20;
+    if (isDowntrend) trendScore -= (priceAboveEma200 ? 5 : 20);
+    if (nearEma200 && priceAboveEma200) trendScore += 5;
   } else if (style === "swing") {
-    // Swing cares about EMA20/50 alignment + MACD
     if (isUptrend) trendScore += 18;
     if (price > ema50) trendScore += 7;
     if (macd > macdSignal) trendScore += 5;
     if (!isDowntrend) trendScore += 5;
-    if (isDowntrend) trendScore -= 15;
+    // Pullback penalty: lighter if still above EMA200 (support)
+    if (isDowntrend) trendScore -= (priceAboveEma200 ? 5 : 15);
+    // Bonus: sitting near major support (EMA50 or EMA200)
+    if (nearEma50 || nearEma200) trendScore += 5;
   } else {
-    // Scalping cares about short-term momentum
+    // Scalping
     if (change > 1) trendScore += 10;
     if (price > ema20) trendScore += 10;
     if (macd > macdSignal) trendScore += 10;
@@ -63,25 +70,34 @@ export function scoreStock(s, profile = {}) {
 
   // ── 2. MOMENTUM (0-25 pts) ──
   let momentumScore = 0;
-  const rsiZone = rsi <= 30 ? "oversold" : rsi >= 70 ? "overbought" : "neutral";
   const bbPct = (bbUpper - bbLower) > 0 ? ((price - bbLower) / (bbUpper - bbLower)) * 100 : 50;
 
   if (style === "dài hạn") {
-    if (rsiZone === "oversold") momentumScore += 15; // bargain entry
-    if (rsiZone === "neutral" && rsi > 40) momentumScore += 10;
-    if (bbPct < 20) momentumScore += 5; // near lower band = value
-    if (rsiZone === "overbought") momentumScore -= 10;
+    // Long-term: reward accumulation zone broadly
+    if (rsi <= 40) momentumScore += 15;
+    else if (rsi <= 65) momentumScore += 10;
+    else if (rsi >= 75) momentumScore -= 10;
+
+    if (bbPct < 25) momentumScore += 5;
+    else if (bbPct < 60) momentumScore += 3;
   } else if (style === "swing") {
-    if (rsi >= 40 && rsi <= 65) momentumScore += 15; // sweet spot
-    if (rsi > 30 && rsi < 40) momentumScore += 8; // recovering from oversold
-    if (rsi > 65 && rsi < 75) momentumScore += 5; // strong but not overextended
-    if (bbPct > 30 && bbPct < 80) momentumScore += 5;
-    if (bbPct > 90) momentumScore -= 5; // near top = risky entry
+    // Swing: reward BOTH oversold bargains AND healthy trend
+    if (rsi <= 35) momentumScore += 15;        // Oversold = prime buy
+    else if (rsi <= 65) momentumScore += 15;    // Healthy trend
+    else if (rsi < 75) momentumScore += 5;      // Strong but extended
+    else momentumScore -= 10;                   // Overbought penalty
+
+    // Bollinger band position
+    if (bbPct < 25) momentumScore += 8;         // Near lower band = buy zone
+    else if (bbPct <= 75) momentumScore += 5;   // Middle range = healthy
+    else if (bbPct > 90) momentumScore -= 5;    // Overextended
   } else {
-    if (rsi > 50 && rsi < 75) momentumScore += 15; // trending momentum
-    if (rsi >= 40 && rsi <= 50) momentumScore += 5;
-    if (rsi >= 75) momentumScore -= 5; // overextended
-    if (bbPct > 50) momentumScore += 5; // above midline = momentum
+    // Scalping
+    if (rsi > 50 && rsi < 75) momentumScore += 15;
+    else if (rsi >= 40 && rsi <= 50) momentumScore += 5;
+    else if (rsi >= 75) momentumScore -= 5;
+
+    if (bbPct > 50 && bbPct < 90) momentumScore += 5;
   }
   momentumScore = Math.max(0, Math.min(25, momentumScore));
   signals.push({ name: "Động lượng", score: momentumScore, max: 25 });
@@ -89,14 +105,25 @@ export function scoreStock(s, profile = {}) {
   // ── 3. VOLUME CONFIRMATION (0-20 pts) ──
   let volumeScore = 0;
   const volRatio = vol / volAvg;
+  const isCrypto = s.type === "crypto" || s.subtype === "crypto";
 
-  // Minimum liquidity check
-  if (vol >= 500000) volumeScore += 5;
-  if (vol >= 1000000) volumeScore += 3;
-  if (volRatio > 1.5) volumeScore += 6; // volume surge
-  if (volRatio > 2.0) volumeScore += 3;
-  if (volRatio > 1.0 && change > 0) volumeScore += 3; // rising on volume
-  if (volRatio < 0.3) volumeScore -= 5; // dead stock
+  if (isCrypto) {
+    // For crypto, we don't look at absolute coin count since prices differ by orders of magnitude.
+    // Instead, we only care about relative volume (volRatio) to check for a volume surge.
+    volumeScore += 8; // base points for large cap crypto liquidity
+    if (volRatio > 1.5) volumeScore += 6;
+    if (volRatio > 2.0) volumeScore += 3;
+    if (volRatio > 1.0 && change > 0) volumeScore += 3;
+    if (volRatio < 0.3) volumeScore -= 5;
+  } else {
+    // Stocks
+    if (vol >= 500000) volumeScore += 5;
+    if (vol >= 1000000) volumeScore += 3;
+    if (volRatio > 1.5) volumeScore += 6;
+    if (volRatio > 2.0) volumeScore += 3;
+    if (volRatio > 1.0 && change > 0) volumeScore += 3;
+    if (volRatio < 0.3) volumeScore -= 5;
+  }
   volumeScore = Math.max(0, Math.min(20, volumeScore));
   signals.push({ name: "Thanh khoản", score: volumeScore, max: 20 });
 
@@ -105,30 +132,36 @@ export function scoreStock(s, profile = {}) {
   const atr = s.atr || (price * 0.02);
   const atrPct = (atr / price) * 100;
 
+  // Crypto volatility is typically 2.5x higher than stocks. We scale it down to keep safety score ranges aligned.
+  const evalAtrPct = isCrypto ? (atrPct / 2.5) : atrPct;
+
   if (risk === "thấp") {
-    if (atrPct < 3) safetyScore += 7; // low volatility = safe
-    if (atrPct >= 3 && atrPct < 5) safetyScore += 3;
-    if (atrPct >= 5) safetyScore -= 5; // too wild
-    if (bbPct > 20 && bbPct < 60) safetyScore += 5; // room to run
+    if (evalAtrPct < 3) safetyScore += 10;
+    else if (evalAtrPct < 5) safetyScore += 4;
+    else safetyScore -= 5;
+
+    if (bbPct > 10 && bbPct < 60) safetyScore += 5;
   } else if (risk === "cao") {
-    if (atrPct >= 3 && atrPct < 8) safetyScore += 7; // volatility = opportunity
-    if (atrPct >= 2) safetyScore += 3;
+    if (evalAtrPct >= 3 && evalAtrPct < 8) safetyScore += 7;
+    if (evalAtrPct >= 2) safetyScore += 3;
     if (bbPct > 30 && bbPct < 80) safetyScore += 5;
   } else {
-    if (atrPct < 4) safetyScore += 6;
-    if (atrPct >= 2) safetyScore += 3;
-    if (bbPct > 20 && bbPct < 70) safetyScore += 6;
+    // Trung bình — reward low volatility properly
+    if (evalAtrPct < 3) safetyScore += 9;
+    else if (evalAtrPct < 5) safetyScore += 6;
+    else safetyScore -= 3;
+
+    if (bbPct > 10 && bbPct < 70) safetyScore += 6;
   }
   safetyScore = Math.max(0, Math.min(15, safetyScore));
   signals.push({ name: "An toàn", score: safetyScore, max: 15 });
 
   // ── 5. RELATIVE STRENGTH (0-10 pts) ──
   let rsScore = 0;
-  // Compare performance vs market (using change as proxy)
   if (change > 2) rsScore += 4;
   if (change > 0) rsScore += 2;
-  if (price > ema200) rsScore += 3; // above long-term avg
-  if (price > high * 0.95) rsScore += 1; // near recent high
+  if (priceAboveEma200) rsScore += 3;
+  if (price > high * 0.95) rsScore += 1;
   rsScore = Math.max(0, Math.min(10, rsScore));
   signals.push({ name: "Sức mạnh", score: rsScore, max: 10 });
 
