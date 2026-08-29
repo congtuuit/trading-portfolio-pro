@@ -5,8 +5,9 @@
 
 import { fetchPricesMap } from "./price.js";
 import { calculatePnL } from "./pnl.js";
-import { getDivisor, escapeHTML, calculateT0Scenario, parseMarkdown, calculatePositionSize, calculateProbability, detectCandlePattern } from "./utils.js";
+import { getDivisor, escapeHTML, calculateT0Scenario, parseMarkdown, calculatePositionSize, calculateProbability, detectCandlePattern, getSector, calculateSectorAllocation } from "./utils.js";
 import { suggestEntryExit, calculateFibLevels } from "./analysis.js";
+
 
 
 /** Format a number to 2 decimal places with thousands separators */
@@ -877,6 +878,60 @@ function renderTradeCard(trade, priceData) {
 }
 
 /**
+ * Render Sector Health & Concentration Allocation Bar into #portfolio-sector-health.
+ */
+export function renderSectorAllocation(portfolio, priceMap = {}, root = document) {
+  const container = root.querySelector("#portfolio-sector-health");
+  if (!container) return;
+
+  if (!portfolio || portfolio.length === 0) {
+    container.style.display = "none";
+    container.innerHTML = "";
+    return;
+  }
+
+  const alloc = calculateSectorAllocation(portfolio, priceMap);
+  if (!alloc || alloc.sectors.length === 0) {
+    container.style.display = "none";
+    return;
+  }
+
+  const barSegments = alloc.sectors.map(s => `
+    <div style="width:${s.percent}%; background:${s.color}; height:100%;" data-tooltip="${s.name}: ${s.percent}%"></div>
+  `).join("");
+
+  const chips = alloc.sectors.slice(0, 4).map(s => `
+    <span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(255,255,255,0.04); border:1px solid ${s.color}; color:var(--text-primary); display:inline-flex; align-items:center; gap:4px;">
+      <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${s.color};"></span>
+      ${s.name}: <strong>${s.percent}%</strong>
+    </span>
+  `).join("");
+
+  const warningHtml = alloc.isConcentrated ? `
+    <div style="margin-top:6px; font-size:10px; color:#f59e0b; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); padding:4px 8px; border-radius:4px; line-height:1.3;">
+      ${alloc.warningMessage}
+    </div>
+  ` : "";
+
+  container.innerHTML = `
+    <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:8px 10px; box-shadow:var(--shadow);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <span style="font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">📊 Phân Bổ Ngành & Rủi Ro</span>
+        <span style="font-size:10px; color:var(--text-muted);">${alloc.sectors.length} nhóm ngành</span>
+      </div>
+      <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:rgba(255,255,255,0.05); margin-bottom:6px;">
+        ${barSegments}
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:4px;">
+        ${chips}
+      </div>
+      ${warningHtml}
+    </div>
+  `;
+  container.style.display = "block";
+}
+
+/**
  * Render the full portfolio list into #portfolio-list.
  * Performs in-place DOM patching to avoid flicker.
  *
@@ -888,6 +943,9 @@ function renderTradeCard(trade, priceData) {
 export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}, root = document) {
   const container = root.querySelector("#portfolio-list");
   if (!container) return;
+
+  // Render Sector Health & Concentration Bar
+  renderSectorAllocation(portfolio, priceMap, root);
 
   // ── Empty state ──
   if (!portfolio || portfolio.length === 0) {
@@ -1828,3 +1886,38 @@ export function bindCaughtSignalEvents(getLatestSignals, onSaveToPortfolio, onCl
     });
   }
 }
+
+/**
+ * Bind the Side Panel toggle button in Header.
+ */
+export function bindSidePanelButton(root = document) {
+  const btnSidePanel = root.querySelector("#btn-sidepanel");
+  if (btnSidePanel) {
+    btnSidePanel.addEventListener("click", async (e) => {
+      e.preventDefault();
+      if (typeof chrome !== "undefined" && chrome.sidePanel && chrome.sidePanel.open) {
+        try {
+          const win = await chrome.windows.getCurrent();
+          if (win && win.id) {
+            await chrome.sidePanel.open({ windowId: win.id });
+            setTimeout(() => window.close(), 150);
+            return;
+          }
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tab && tab.id) {
+            await chrome.sidePanel.open({ tabId: tab.id });
+            setTimeout(() => window.close(), 150);
+            return;
+          }
+        } catch (err) {
+          console.warn("[TPP] sidePanel.open notice:", err);
+          alert("💡 Cách mở Side Panel nhanh trên Chrome:\n1. Click chuột phải vào biểu tượng Extension Trading Portfolio Pro trên thanh công cụ Chrome.\n2. Chọn 'Mở bảng điều khiển bên' (Open side panel).\n\nThanh bên sẽ ghim cố định bên cạnh TradingView!");
+        }
+      } else {
+        alert("💡 Cách mở Side Panel nhanh trên Chrome:\n1. Click chuột phải vào biểu tượng Extension Trading Portfolio Pro trên thanh công cụ Chrome.\n2. Chọn 'Mở bảng điều khiển bên' (Open side panel).\n\nThanh bên sẽ ghim cố định bên cạnh TradingView!");
+      }
+    });
+  }
+}
+
+

@@ -38,17 +38,29 @@
   padding: 0;
 }
 
+html {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-primary);
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+}
+
 body {
   font-family: 'Outfit', 'Inter', system-ui, sans-serif;
   font-size: 13px;
   color: var(--text-primary);
   background: var(--bg-primary);
-  width: 550px;
-  min-height: 650px;
-  max-height: 800px;
-  overflow-y: auto;
+  width: 100%;
+  min-width: 320px;
+  height: 100vh;
+  margin: 0 auto;
+  overflow-x: hidden;
+  overflow-y: scroll;
   scrollbar-width: thin;
   scrollbar-color: var(--bg-input) transparent;
+  scrollbar-gutter: stable;
 }
 
 body::-webkit-scrollbar {
@@ -460,14 +472,14 @@ textarea {
 }
 
 /* ── Tabs System ── */
-.tabs-nav {
+.tabs-container, .tabs-nav {
   display: flex;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
-  padding: 0 16px;
+  padding: 0 12px;
   position: sticky;
-  top: 45px; /* Dưới header */
-  z-index: 9;
+  top: 0;
+  z-index: 10;
 }
 
 .tab-btn {
@@ -475,11 +487,12 @@ textarea {
   border: none;
   border-bottom: 2px solid transparent;
   color: var(--text-muted);
-  padding: 10px 16px;
+  padding: 10px 14px;
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
 }
 
 .tab-btn:hover {
@@ -493,10 +506,18 @@ textarea {
 
 .tab-content {
   display: none;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .tab-content.active {
   display: block;
+  animation: fadeInTab 0.12s ease-in-out;
+}
+
+@keyframes fadeInTab {
+  from { opacity: 0.85; }
+  to { opacity: 1; }
 }
 
 /* ── AI Advisor UI ── */

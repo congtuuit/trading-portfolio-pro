@@ -308,3 +308,113 @@ export function calculateConfluenceScore(s, profile = {}) {
   return Number(Math.min(10.0, Math.max(1.0, score)).toFixed(1));
 }
 
+/**
+ * Sector Definition Map for Vietnamese stocks and major cryptos.
+ */
+const SECTOR_MAP = {
+  "Bất Động Sản": ["VHM", "VIC", "VRE", "NVL", "PDR", "DXG", "DIG", "KDH", "NLG", "CEO", "HDC", "KBC", "IDC", "SZC", "BCM", "TCH", "SCR", "DXS", "KHG"],
+  "Ngân Hàng": ["VCB", "BID", "CTG", "TCB", "MBB", "VPB", "ACB", "HDB", "STB", "SHB", "TPB", "LPB", "VIB", "MSB", "OCB", "SSB", "EIB", "BAB", "NAB"],
+  "Chứng Khoán": ["SSI", "VND", "VCI", "HCM", "SHS", "VIX", "FTS", "BSI", "CTS", "MBS", "AGR", "ORS", "BVS", "VDS", "TVS"],
+  "Thép & Vật Liệu": ["HPG", "NKG", "HSG", "VGS", "TLH", "HT1", "BCC", "POM", "SMC", "KSB"],
+  "Công Nghệ & Bán Lẻ": ["FPT", "MWG", "DGW", "FRT", "PNJ", "MSN", "VGI", "FOX", "ELC", "CMG", "SAM"],
+  "Dầu Khí & Năng Lượng": ["GAS", "PVD", "PVS", "BSR", "PLX", "PVT", "POW", "REE", "GEG", "PC1", "HDG", "NT2", "PPC"],
+  "Hóa Chất & Phân Bón": ["DGC", "DCM", "DPM", "BFC", "CSV", "LAS", "DDV"],
+  "Thực Phẩm & Nông Nghiệp": ["VNM", "SAB", "DBC", "BAF", "VHC", "ANV", "IDI", "FMC", "HNG", "HAG", "PAN"],
+  "Cảng Biển & Vận Tải": ["GMD", "HAH", "VOS", "VSC", "SGP", "PHP"],
+  "Crypto / Tiền Số": ["BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX", "LINK", "SUI", "NEAR", "APT", "DOT"]
+};
+
+const SECTOR_COLORS = {
+  "Bất Động Sản": "#f59e0b",
+  "Ngân Hàng": "#3b82f6",
+  "Chứng Khoán": "#8b5cf6",
+  "Thép & Vật Liệu": "#64748b",
+  "Công Nghệ & Bán Lẻ": "#10b981",
+  "Dầu Khí & Năng Lượng": "#ef4444",
+  "Hóa Chất & Phân Bón": "#06b6d4",
+  "Thực Phẩm & Nông Nghiệp": "#ec4899",
+  "Cảng Biển & Vận Tải": "#14b8a6",
+  "Crypto / Tiền Số": "#f97316",
+  "Khác": "#94a3b8"
+};
+
+/**
+ * Identify the sector of a symbol.
+ * @param {string} symbol - Full symbol string (e.g. HOSE:VHM, BINANCE:BTCUSDT)
+ * @returns {string} Sector name
+ */
+export function getSector(symbol) {
+  if (!symbol) return "Khác";
+  const raw = symbol.toUpperCase();
+  let baseTicker = raw;
+  if (raw.includes(":")) {
+    baseTicker = raw.split(":")[1];
+  }
+  // Trim common crypto suffixes
+  baseTicker = baseTicker.replace("USDT", "").replace("USD", "").replace("BUSD", "");
+
+  for (const [sector, tickers] of Object.entries(SECTOR_MAP)) {
+    if (tickers.includes(baseTicker)) {
+      return sector;
+    }
+  }
+  return "Khác";
+}
+
+/**
+ * Calculate Sector Allocation and Portfolio Concentration Risk.
+ * @param {Array} portfolio - Array of trade items
+ * @param {Object} pricesMap - Map of live prices
+ * @returns {Object} { sectors, topSector, isConcentrated, warningMessage, totalValue }
+ */
+export function calculateSectorAllocation(portfolio = [], pricesMap = {}) {
+  if (!portfolio || portfolio.length === 0) {
+    return { sectors: [], topSector: null, isConcentrated: false, warningMessage: "", totalValue: 0 };
+  }
+
+  const sectorTotals = {};
+  let totalPortfolioValue = 0;
+
+  portfolio.forEach(t => {
+    const divisor = getDivisor(t.symbol);
+    const livePriceData = pricesMap[t.symbol];
+    const curPrice = livePriceData ? (livePriceData.close / divisor) : parseFloat(t.entryPrice || 0);
+    const qty = parseFloat(t.quantity || 0);
+    const itemValue = Math.max(0, qty * curPrice);
+
+    const sector = getSector(t.symbol);
+    if (!sectorTotals[sector]) {
+      sectorTotals[sector] = { name: sector, value: 0, count: 0, color: SECTOR_COLORS[sector] || "#94a3b8" };
+    }
+    sectorTotals[sector].value += itemValue;
+    sectorTotals[sector].count += 1;
+    totalPortfolioValue += itemValue;
+  });
+
+  if (totalPortfolioValue <= 0) {
+    return { sectors: [], topSector: null, isConcentrated: false, warningMessage: "", totalValue: 0 };
+  }
+
+  const sectors = Object.values(sectorTotals).map(s => ({
+    ...s,
+    percent: parseFloat(((s.value / totalPortfolioValue) * 100).toFixed(1))
+  })).sort((a, b) => b.percent - a.percent);
+
+  const topSector = sectors[0] || null;
+  const isConcentrated = topSector ? topSector.percent >= 40.0 : false;
+  let warningMessage = "";
+
+  if (isConcentrated && topSector) {
+    warningMessage = `⚠️ Cảnh báo: Ngành ${topSector.name} chiếm ${topSector.percent}% danh mục (> 40%). Nên cân nhắc tái cơ cấu để giảm thiểu rủi ro tập trung!`;
+  }
+
+  return {
+    sectors,
+    topSector,
+    isConcentrated,
+    warningMessage,
+    totalValue: totalPortfolioValue
+  };
+}
+
+

@@ -21,10 +21,16 @@ const MONITOR_INTERVAL_MINS = 10;
 // Initialize alarm on install or startup
 chrome.runtime.onInstalled.addListener(() => {
   setupAlarm();
+  if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+  }
 });
 
 chrome.runtime.onStartup.addListener(() => {
   setupAlarm();
+  if (chrome.sidePanel && chrome.sidePanel.setPanelBehavior) {
+    chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+  }
 });
 
 // Watch for settings changes to re-setup alarm if needed

@@ -38,6 +38,7 @@ import {
   toggleModal,
   bindDeepResearchEvents,
   renderDeepResearch,
+  bindSidePanelButton,
 } from "./ui.js";
 import { fetchPricesMap, fetchDeepResearchData } from "./price.js";
 import { queryAI, fetchModels, screenPotentialStocks, getDetailedAdvice, analyzeDeepStock } from "./ai.js";
@@ -400,6 +401,17 @@ export async function initApp(root) {
     renderScannerResults(scannerCache.results, root, scannerCache.timestamp, "#scanner-ai-results", appSettings);
   }
 
+  // Detect if running in Side Panel mode
+  const checkSidePanel = () => {
+    if (window.innerWidth > 560 || window.innerHeight > 620) {
+      document.body.classList.add("sidepanel-mode");
+    } else {
+      document.body.classList.remove("sidepanel-mode");
+    }
+  };
+  checkSidePanel();
+  window.addEventListener("resize", checkSidePanel);
+
   setupCoreBindings();
   setupScannerBindings();
   setupManagementBindings();
@@ -416,6 +428,7 @@ export async function initApp(root) {
     bindT0Events(handleT0, root);
     bindTabEvents(root);
     bindDeepResearchEvents(handleDeepResearch, root);
+    bindSidePanelButton(root);
     bindSettingsEvents(appSettings, async (s) => {
       appSettings = s;
       await saveSettings(s);
