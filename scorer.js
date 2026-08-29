@@ -1,9 +1,10 @@
 /**
  * scorer.js
- * Professional Stock Scoring Engine — mirrors Pine Script v5.4 indicator logic.
- * Computes a multi-dimensional score (0-100) for each stock using TV scanner data.
- * Enhanced with Anti-Overbought, Mean-Reversion & Sweet Buy Zone detection.
+ * Professional Stock Scoring Engine — mirrors Pine Script v5.5 3-Layer Confluence Engine.
+ * Computes a multi-dimensional score (0-100) and Confluence (0-10) for each stock using TV scanner data.
+ * Enhanced with Anti-Overbought, Mean-Reversion, Probability Assessment & Sweet Buy Zone detection.
  */
+import { calculatePositionSize, detectCandlePattern, calculateProbability, calculateConfluenceScore } from "./utils.js";
 
 /**
  * Compute a professional trading score for a single stock.
@@ -254,8 +255,16 @@ export function scoreStock(s, profile = {}) {
   const isNearResistance = breakoutPct < 2.5 || bbPct > 85;
   const isBreakingOut = price > ema20 && breakoutPct < 1.5 && bbPct <= 85;
 
+  // ── PINE SCRIPT V5.5 INTEGRATIONS ──
+  const confluence = calculateConfluenceScore(s, profile);
+  const probability = calculateProbability(s, profile);
+  const pattern = detectCandlePattern(s);
+
   return {
     score: totalScore,
+    confluence,
+    probability,
+    pattern,
     grade,
     gradeLabel: gradeLegend[grade],
     signals,
@@ -286,6 +295,9 @@ export function rankStocks(stocks, profile = {}, maxCandidates = 20) {
       ...s,
       _scoreData: scored,
       _score: scored.score,
+      _confluence: scored.confluence,
+      _probability: scored.probability,
+      _pattern: scored.pattern,
       _grade: scored.grade,
       _gradeLabel: scored.gradeLabel,
       _winRate: scored.winRate,
@@ -308,3 +320,4 @@ export function rankStocks(stocks, profile = {}, maxCandidates = 20) {
 
   return final.slice(0, maxCandidates);
 }
+

@@ -111,3 +111,200 @@ export function parseMarkdown(text) {
 
   return html;
 }
+
+/**
+ * Calculate Position Sizing based on risk percentage of account balance (Pine Script logic).
+ * @param {number} entry - Entry price
+ * @param {number} stoploss - Stop loss price
+ * @param {number} accountBalance - Total account balance (default 100,000,000 VND or 5000 USDT)
+ * @param {number} riskPercent - Risk % per trade (e.g. 2 for 2%)
+ * @param {boolean} isCrypto - Asset type
+ * @returns {Object} { units, riskAmount, totalInvestment, percentOfPortfolio }
+ */
+export function calculatePositionSize(entry, stoploss, accountBalance = 100000000, riskPercent = 2.0, isCrypto = false) {
+  const e = parseFloat(entry) || 0;
+  const sl = parseFloat(stoploss) || 0;
+  const bal = parseFloat(accountBalance) || 100000000;
+  const riskPct = parseFloat(riskPercent) || 2.0;
+
+  if (e <= 0 || sl <= 0 || e === sl) {
+    return { units: 0, riskAmount: 0, totalInvestment: 0, percentOfPortfolio: 0 };
+  }
+
+  const riskAmount = bal * (riskPct / 100.0);
+  const dist = Math.abs(e - sl);
+  let rawUnits = riskAmount / dist;
+
+  let units = rawUnits;
+  if (!isCrypto) {
+    // VN Stocks are traded in lots of 100
+    units = Math.max(100, Math.floor(rawUnits / 100) * 100);
+  } else {
+    units = parseFloat(rawUnits.toFixed(4));
+  }
+
+  const totalInvestment = units * e;
+  const percentOfPortfolio = parseFloat(((totalInvestment / bal) * 100).toFixed(1));
+
+  return {
+    units,
+    riskAmount: Math.round(riskAmount),
+    totalInvestment: Math.round(totalInvestment),
+    percentOfPortfolio
+  };
+}
+
+/**
+ * Detect Candlestick Patterns from OHLCV snapshot data.
+ * @param {Object} s - Stock data with price, changePercent, high, low, atr
+ * @returns {Object} { pattern, isBullish, icon, label }
+ */
+export function detectCandlePattern(s) {
+  const close = s.price || s.close || 0;
+  const change = s.changePercent || 0;
+  const open = s.open || (change !== 0 ? close / (1 + change / 100) : close);
+  const high = s.high || Math.max(open, close);
+  const low = s.low || Math.min(open, close);
+
+  const bodySize = Math.abs(close - open);
+  const isBull = close >= open;
+  const upperWick = high - Math.max(open, close);
+  const lowerWick = Math.min(open, close) - low;
+  const totalRange = high - low;
+
+  if (totalRange === 0) return { pattern: "Normal", isBullish: true, icon: "🕯️", label: "Nến Thường" };
+
+  // Hammer / Pinbar rút chân
+  if (lowerWick >= bodySize * 2.0 && upperWick <= bodySize * 0.5 && lowerWick > totalRange * 0.5) {
+    return { pattern: "Hammer", isBullish: true, icon: "🔨", label: "Pinbar Rút Chân" };
+  }
+
+  // Shooting Star
+  if (upperWick >= bodySize * 2.0 && lowerWick <= bodySize * 0.5 && upperWick > totalRange * 0.5) {
+    return { pattern: "ShootingStar", isBullish: false, icon: "☄️", label: "Bắn Sao (Áp Lực Bán)" };
+  }
+
+  // Marubozu / Lực đẩy mạnh
+  if (bodySize >= totalRange * 0.8 && change > 2.5) {
+    return { pattern: "BullishMarubozu", isBullish: true, icon: "🚀", label: "Lực Đẩy Mạnh" };
+  }
+
+  // Bullish Engulfing / Tăng tốt
+  if (isBull && change >= 1.5 && bodySize > totalRange * 0.6) {
+    return { pattern: "BullishCandle", isBullish: true, icon: "🟢", label: "Nến Tăng Đẹp" };
+  }
+
+  // Doji
+  if (bodySize <= totalRange * 0.1) {
+    return { pattern: "Doji", isBullish: true, icon: "⚖️", label: "Lưỡng Lự Doji" };
+  }
+
+  return { pattern: isBull ? "Bull" : "Bear", isBullish: isBull, icon: isBull ? "📈" : "📉", label: isBull ? "Tăng Nhẹ" : "Điều Chỉnh" };
+}
+
+/**
+ * Probability Assessment Matrix (mirrors Pine Script V5.5).
+ * @param {Object} s - Stock data
+ * @param {Object} profile - User profile
+ * @returns {Object} { bullProb, bearProb, direction, strength, dirColor, badgeText }
+ */
+export function calculateProbability(s, profile = {}) {
+  const price = s.price || s.close || 0;
+  const rsi = s.rsi || 50;
+  const ema20 = s.ema20 || price;
+  const ema50 = s.ema50 || price;
+  const ema200 = s.ema200 || price;
+  const bbLower = s.bb_lower || 0;
+  const bbUpper = s.bb_upper || 0;
+  const macd = s.macd || 0;
+  const macdSignal = s.macdSignal || s.macd_signal || 0;
+
+  const isUptrend = price > ema20 && ema20 > ema50;
+  const priceAboveEma200 = price > ema200;
+  const isMACDBullish = macd > macdSignal;
+  const bbRange = bbUpper - bbLower;
+  const bbPct = bbRange > 0 ? ((price - bbLower) / bbRange) * 100 : 50;
+
+  let bullProb = 50.0;
+
+  if (isUptrend) bullProb += 8.0;
+  else if (price < ema20 && ema20 < ema50) bullProb -= 8.0;
+
+  if (priceAboveEma200) bullProb += 6.0;
+  else bullProb -= 6.0;
+
+  if (isMACDBullish) bullProb += 7.0;
+  else bullProb -= 7.0;
+
+  if (rsi <= 35) bullProb += 8.0; // Oversold
+  else if (rsi >= 48 && rsi <= 62) bullProb += 6.0; // Healthy momentum
+  else if (rsi >= 70) bullProb -= 10.0; // Overbought
+
+  if (bbPct <= 25) bullProb += 6.0; // Bottom BB
+  else if (bbPct >= 85) bullProb -= 8.0; // Top BB
+
+  // Clamping
+  bullProb = Math.min(88.0, Math.max(15.0, Math.round(bullProb)));
+  const bearProb = 100 - bullProb;
+
+  let strength = "TRUNG BÌNH ⭐⭐";
+  if (Math.abs(bullProb - 50) >= 18) strength = "MẠNH ⭐⭐⭐";
+  else if (Math.abs(bullProb - 50) <= 8) strength = "YẾU ⭐";
+
+  const direction = bullProb >= 55 ? "ƯU TIÊN TĂNG" : bullProb <= 45 ? "ƯU TIÊN GIẢM" : "ĐI NGANG";
+  const dirColor = bullProb >= 55 ? "#10b981" : bullProb <= 45 ? "#ef4444" : "#94a3b8";
+
+  return {
+    bullProb,
+    bearProb,
+    direction,
+    strength,
+    dirColor,
+    badgeText: `${bullProb >= 55 ? "🟢" : "🔴"} Tăng ${bullProb}% | Giảm ${bearProb}% (${strength})`
+  };
+}
+
+/**
+ * 3-Layer Confluence Score (0 - 10 points) mirroring Pine Script V5.5.
+ * @param {Object} s - Stock data
+ * @param {Object} profile - User profile
+ * @returns {number} Confluence score (0.0 - 10.0)
+ */
+export function calculateConfluenceScore(s, profile = {}) {
+  const price = s.price || s.close || 0;
+  const rsi = s.rsi || 50;
+  const ema20 = s.ema20 || price;
+  const ema50 = s.ema50 || price;
+  const ema200 = s.ema200 || price;
+  const bbLower = s.bb_lower || 0;
+  const bbUpper = s.bb_upper || 0;
+  const macd = s.macd || 0;
+  const macdSignal = s.macdSignal || s.macd_signal || 0;
+  const volRatio = s.avgVolume10d > 0 ? (s.volume / s.avgVolume10d) : 1;
+
+  let score = 0.0;
+
+  // Layer 1: Context (0 - 3 pts)
+  if (price > ema200) score += 1.0;
+  if (price > ema20 && ema20 > ema50) score += 1.5;
+  else if (price > ema50) score += 0.5;
+
+  // Layer 2: Zone & Support (0 - 3 pts)
+  const bbRange = bbUpper - bbLower;
+  const bbPct = bbRange > 0 ? ((price - bbLower) / bbRange) * 100 : 50;
+  if (bbPct >= 20 && bbPct <= 65) score += 1.5; // Safe accumulation zone
+  else if (bbPct < 20) score += 1.0;
+
+  const ema20Dist = ema20 > 0 ? Math.abs((price - ema20) / ema20) * 100 : 0;
+  if (ema20Dist <= 1.5) score += 1.5; // Retest EMA20
+
+  // Layer 3: Trigger & Momentum (0 - 4 pts)
+  if (macd > macdSignal) score += 1.5;
+  if (rsi >= 45 && rsi <= 62) score += 1.5;
+  else if (rsi < 40) score += 1.0;
+
+  if (volRatio >= 1.2 && (s.changePercent || 0) >= 0) score += 1.0;
+
+  return Number(Math.min(10.0, Math.max(1.0, score)).toFixed(1));
+}
+

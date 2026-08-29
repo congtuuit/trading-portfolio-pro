@@ -233,7 +233,7 @@ export async function initApp(root) {
         lastScannedData = ranked;
         saveRankedResults(ranked); // Persist to storage
 
-        renderScannerResults(ranked, root, Date.now(), "#scanner-raw-results");
+        renderScannerResults(ranked, root, Date.now(), "#scanner-raw-results", appSettings);
         if (ranked.length > 0) btnAI.style.display = "block";
       } else {
         container.innerHTML = `<div class="empty-state">❌ Lỗi: ${res?.error || "Unknown"}</div>`;
@@ -273,7 +273,7 @@ export async function initApp(root) {
 
       const ts = Date.now();
       await saveScannerResults(finalResults, ts);
-      renderScannerResults(finalResults, root, ts, "#scanner-ai-results");
+      renderScannerResults(finalResults, root, ts, "#scanner-ai-results", appSettings);
     } catch (err) {
       aiContainer.innerHTML = `<div class="empty-state">❌ Lỗi AI: ${err.message}</div>`;
     }
@@ -383,21 +383,21 @@ export async function initApp(root) {
   // Khôi phục dữ liệu đã xếp hạng (ưu tiên > raw)
   if (rankedCache.length > 0) {
     lastScannedData = rankedCache;
-    renderScannerResults(rankedCache, root, null, "#scanner-raw-results");
+    renderScannerResults(rankedCache, root, null, "#scanner-raw-results", appSettings);
     root.querySelector("#btn-ai-analyze").style.display = "block";
   } else if (rawCache.length > 0) {
     // Fallback: nếu chưa có ranked, rank từ raw rồi lưu lại
     const ranked = rankStocks(rawCache, appSettings, 50);
     lastScannedData = ranked;
     saveRankedResults(ranked);
-    renderScannerResults(ranked, root, null, "#scanner-raw-results");
+    renderScannerResults(ranked, root, null, "#scanner-raw-results", appSettings);
     root.querySelector("#btn-ai-analyze").style.display = "block";
   }
 
   // Khôi phục dữ liệu AI Top Picks
   if (scannerCache.results.length > 0) {
     root.querySelector("#ai-top-picks").style.display = "block";
-    renderScannerResults(scannerCache.results, root, scannerCache.timestamp, "#scanner-ai-results");
+    renderScannerResults(scannerCache.results, root, scannerCache.timestamp, "#scanner-ai-results", appSettings);
   }
 
   setupCoreBindings();

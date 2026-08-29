@@ -41,7 +41,11 @@ export async function getSettings() {
         tgChatId: '',
         tgEnabled: false,
         lookbackPeriods: 20,
-        theme: 'default'
+        theme: 'default',
+        accountBalance: 100000000,
+        riskPercent: 2.0,
+        tradingStyle: 'swing',
+        riskLevel: 'trung bình'
       });
     });
   });

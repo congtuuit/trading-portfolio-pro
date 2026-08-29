@@ -5,8 +5,9 @@
 
 import { fetchPricesMap } from "./price.js";
 import { calculatePnL } from "./pnl.js";
-import { getDivisor, escapeHTML, calculateT0Scenario, parseMarkdown } from "./utils.js";
+import { getDivisor, escapeHTML, calculateT0Scenario, parseMarkdown, calculatePositionSize, calculateProbability, detectCandlePattern } from "./utils.js";
 import { suggestEntryExit, calculateFibLevels } from "./analysis.js";
+
 
 /** Format a number to 2 decimal places with thousands separators */
 function fmt(n) {
@@ -303,10 +304,9 @@ export function bindScannerEvents(onScan, onAIAnalyze, onAskAdvisor, root = docu
   }
 }
 
-
 const gradeColor = (grade) => grade === 'A' ? '#00e676' : grade === 'B' ? '#4caf50' : grade === 'C' ? '#ff9800' : grade === 'D' ? '#f44336' : '#9e9e9e';
 
-export function renderScannerResults(results, root = document, timestamp = null, containerId = "#scanner-raw-results") {
+export function renderScannerResults(results, root = document, timestamp = null, containerId = "#scanner-raw-results", settings = {}) {
   const container = root.querySelector(containerId);
   if (!container) return;
 
@@ -323,6 +323,8 @@ export function renderScannerResults(results, root = document, timestamp = null,
   }
 
   const isAIList = containerId === "#scanner-ai-results";
+  const accountBal = settings.accountBalance || 100000000;
+  const riskPct = settings.riskPercent || 2.0;
 
   html += results.map(res => {
     const ticker = res.ticker || res.symbol || res.s;
@@ -345,6 +347,17 @@ export function renderScannerResults(results, root = document, timestamp = null,
     const volRatio = res.volume && res.avgVolume10d ? (res.volume / res.avgVolume10d) : 1;
     const ratioStr = volRatio > 1.05 || volRatio < 0.95 ? `x${volRatio.toFixed(1)}` : "";
 
+    // Pine Script V5.5 Analytics
+    const prob = res._probability || calculateProbability(res);
+    const pattern = res._pattern || detectCandlePattern(res);
+    const confluence = res._confluence !== undefined ? res._confluence : 7.0;
+
+    // Position Sizing for AI Card
+    let posSize = null;
+    if (isAIList && res.aiEntry && res.aiStoploss) {
+      posSize = calculatePositionSize(res.aiEntry, res.aiStoploss, accountBal, riskPct, isCrypto);
+    }
+
     return `
       <div class="scanner-card ${isAIList ? 'ai-card' : ''}" data-symbol="${ticker}" data-raw='${JSON.stringify(res).replace(/'/g, "&apos;")}'>
         <!-- Row 1: Header (Symbol, Name, Rating badges) -->
@@ -357,6 +370,7 @@ export function renderScannerResults(results, root = document, timestamp = null,
             <span class="scanner-name" title="${res.description || res.name || ''}">${res.description || res.name || ''}</span>
           </div>
           <div class="scanner-rating-group">
+            ${confluence ? `<span class="tech-badge" style="background:rgba(142,36,170,0.2); border-color:#8e24aa; color:#e1bee7; font-size:10px; font-weight:bold;" data-tooltip="Điểm Đồng Thuận SMC 3 Lớp (0-10đ)">⚡ ${confluence}/10</span>` : ''}
             ${res._score ? `<span class="scanner-score" data-tooltip="Điểm số kỹ thuật: ${res._score}/100">${res._score}/100</span>` : ''}
             ${res._grade ? `<span class="scanner-grade-badge" style="background:${gradeColor(res._grade)};" data-tooltip="Xếp hạng: ${res._grade}">${res._grade}</span>` : ''}
           </div>
@@ -371,10 +385,28 @@ export function renderScannerResults(results, root = document, timestamp = null,
             </span>
           </div>
           <div class="scanner-tech-group">
+            ${pattern ? `<span class="tech-badge" style="background:rgba(38,166,154,0.15); border-color:rgba(38,166,154,0.4); color:var(--text-primary); font-size:10px;" data-tooltip="Nhận diện Price Action">${pattern.icon} ${pattern.label}</span>` : ''}
             <span class="tech-badge" data-tooltip="Chỉ số RSI (14 phiên)">RSI: <strong>${Math.round(res.rsi || 50)}</strong></span>
             <span class="tech-badge" data-tooltip="Khối lượng giao dịch & tỷ lệ so với trung bình 10 ngày">Vol: <strong>${volStr}</strong>${ratioStr ? `<span class="vol-ratio">${ratioStr}</span>` : ''}</span>
           </div>
         </div>
+
+        <!-- Row 2.5: Probability Assessment Bar (Pine Script V5.5 Engine) -->
+        ${prob ? `
+        <div class="prob-wrapper" style="margin: 6px 0 8px; background:rgba(0,0,0,0.2); padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);" data-tooltip="Bảng dự báo xác suất xu hướng (SMC V5.5 Engine)">
+          <div style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:3px;">
+            <span>Dự báo: <strong style="color:${prob.dirColor}; font-weight:bold;">${prob.direction}</strong></span>
+            <span style="color:var(--text-muted);">Độ tin cậy: <strong style="color:#fff;">${prob.strength}</strong></span>
+          </div>
+          <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:#334155;">
+            <div style="width:${prob.bullProb}%; background:linear-gradient(90deg, #059669, #10b981); transition:width 0.3s;"></div>
+            <div style="width:${prob.bearProb}%; background:linear-gradient(90deg, #ef4444, #dc2626); transition:width 0.3s;"></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:9px; color:var(--text-muted); margin-top:2px;">
+            <span style="color:#34d399;">Tăng ${prob.bullProb}%</span>
+            <span style="color:#f87171;">Giảm ${prob.bearProb}%</span>
+          </div>
+        </div>` : ''}
 
         <!-- Row 3: Holding Expectations & Breakout Projections -->
         ${res._winRate ? `
@@ -414,6 +446,13 @@ export function renderScannerResults(results, root = document, timestamp = null,
               ${res.aiRR ? `<span style="background:${res.aiRR >= 2 ? 'var(--profit)' : (res.aiRR >= 1.5 ? 'var(--warning, #f1c40f)' : 'var(--loss)')}; color:white; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:9px;">R:R = 1:${res.aiRR}</span>` : ''}
             </div>
           </div>
+
+          <!-- Position Sizing Suggestion Box -->
+          ${posSize && posSize.units > 0 ? `
+          <div style="margin-top:6px; background:rgba(33,150,243,0.08); border:1px dashed var(--accent-blue); padding:6px 8px; border-radius:6px; font-size:10px; display:flex; justify-content:space-between; align-items:center;">
+            <span>🛡️ Khối lượng đi lệnh tối ưu: <strong style="color:var(--accent-blue); font-size:11px;">${posSize.units.toLocaleString()} ${isCrypto ? 'Coin' : 'CP'}</strong></span>
+            <span style="color:var(--text-muted);">(Rủi ro: ${posSize.riskAmount.toLocaleString()} ${isCrypto ? 'USDT' : 'đ'})</span>
+          </div>` : ''}
         </div>
         ` : ''}
       </div>
@@ -661,6 +700,12 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
       root.querySelector("#inp-trading-style").value = settings.tradingStyle || "lướt sóng";
       root.querySelector("#inp-risk-level").value = settings.riskLevel || "trung bình";
       
+      // Load Position Sizing / Capital Management
+      const inpBal = root.querySelector("#inp-account-balance");
+      if (inpBal) inpBal.value = settings.accountBalance || 100000000;
+      const inpRisk = root.querySelector("#inp-risk-percent");
+      if (inpRisk) inpRisk.value = settings.riskPercent || 2.0;
+
       // Load Telegram settings
       root.querySelector("#inp-tg-token").value = settings.tgToken || "";
       root.querySelector("#inp-tg-chatid").value = settings.tgChatId || "";
@@ -763,6 +808,12 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
       // Save AI Advisor profile
       settings.tradingStyle = root.querySelector("#inp-trading-style").value;
       settings.riskLevel = root.querySelector("#inp-risk-level").value;
+
+      // Save Position Sizing
+      const inpBal = root.querySelector("#inp-account-balance");
+      if (inpBal) settings.accountBalance = parseFloat(inpBal.value) || 100000000;
+      const inpRisk = root.querySelector("#inp-risk-percent");
+      if (inpRisk) settings.riskPercent = parseFloat(inpRisk.value) || 2.0;
 
       // Save Telegram settings
       settings.tgToken = root.querySelector("#inp-tg-token").value.trim();
@@ -1093,7 +1144,7 @@ export function renderDCATechnicalAdvice(root, trade, priceData) {
   container.style.display = "block";
 }
 
-export function calculatePositionSize(root = document) {
+export function calculateFormPositionSize(root = document) {
   const symIn = root.querySelector("#inp-symbol");
   const riskIn = root.querySelector("#inp-risk-amt");
   const entryIn = root.querySelector("#inp-entry");
@@ -1384,7 +1435,7 @@ export function bindFormEvents(onSave, root = document) {
   const entryIn = root.querySelector("#inp-entry");
   const slIn = root.querySelector("#inp-sl");
 
-  const handleCalc = () => calculatePositionSize(root);
+  const handleCalc = () => calculateFormPositionSize(root);
   symIn.addEventListener("input", handleCalc);
   if (riskIn) riskIn.addEventListener("input", handleCalc);
   entryIn.addEventListener("input", handleCalc);
