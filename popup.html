@@ -16,31 +16,41 @@
       <img src="icons/tradingview-logo.png" alt="logo" style="width:20px;height:20px;border-radius:4px;" />
       <h1>Trading Portfolio Pro</h1>
       <div style="display:flex;align-items:center;gap:6px;">
-        <button id="btn-ai-portfolio" class="btn"
-          style="background:linear-gradient(90deg, #1A73E8, #8E24AA);color:white;padding:4px 8px;font-size:12px;"
-          title="AI Đánh giá toàn bộ danh mục">🤖</button>
+        <button id="btn-sidepanel" class="btn"
+          style="background:var(--bg-input);color:var(--text-primary);font-size:12px;"
+          data-tooltip="Mở thanh bên cố định (Side Panel)" data-tooltip-dir="down">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M15 3v18"/></svg>
+        </button>
         <button id="btn-settings" class="btn"
-          style="background:var(--bg-input);color:var(--text-primary);padding:4px 8px;font-size:12px;"
-          title="Settings">⚙️</button>
+          style="background:var(--bg-input);color:var(--text-primary);font-size:12px;"
+          data-tooltip="Cấu hình hệ thống" data-tooltip-dir="down">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+        </button>
         <button id="btn-import" class="btn"
-          style="background:var(--bg-input);color:var(--text-primary);padding:4px 8px;font-size:12px;"
-          title="Import JSON">⬆️</button>
+          style="background:var(--bg-input);color:var(--text-primary);font-size:12px;"
+          data-tooltip="Nhập dữ liệu JSON" data-tooltip-dir="down">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        </button>
         <button id="btn-export" class="btn"
-          style="background:var(--bg-input);color:var(--text-primary);padding:4px 8px;font-size:12px;"
-          title="Export JSON">⬇️</button>
+          style="background:var(--bg-input);color:var(--text-primary);font-size:12px;"
+          data-tooltip="Xuất dữ liệu JSON" data-tooltip-dir="down">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        </button>
         <button id="btn-history" class="btn"
-          style="background:var(--bg-input);color:var(--text-primary);padding:4px 8px;font-size:12px;"
-          title="Lịch sử chốt lệnh">📋</button>
+          style="background:var(--bg-input);color:var(--text-primary);font-size:12px;"
+          data-tooltip="Lịch sử chốt lệnh" data-tooltip-dir="down">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+        </button>
         <span id="total-pnl" class="total-pnl">Total PnL: 0.00</span>
       </div>
   </header>
 
   <!-- ── Tab Navigation ── -->
-  <nav class="tabs-nav">
-    <button class="tab-btn active" data-target="section-portfolio">💼 Danh Mục</button>
-    <button class="tab-btn" data-target="section-advisor">🧠 Advisor</button>
-    <button class="tab-btn" data-target="section-logs">📜 Nhật ký</button>
-  </nav>
+  <div class="tabs-container">
+    <button class="tab-btn active" data-target="section-portfolio" data-tooltip="Xem vị thế hiện tại và quản lý danh mục đầu tư">💼 Danh Mục</button>
+    <button class="tab-btn" data-target="section-advisor" data-tooltip="Quét tín hiệu thị trường và nhận gợi ý từ AI">🧠 Advisor</button>
+    <button class="tab-btn" data-target="section-research" data-tooltip="Phân tích cổ phiếu chuyên sâu kỹ thuật & cơ bản">🔍 Nghiên cứu</button>
+  </div>
 
   <div id="section-portfolio" class="tab-content active">
 
@@ -56,7 +66,7 @@
             <label for="inp-symbol">Symbol *</label>
             <div style="display:flex;gap:4px;">
               <input id="inp-symbol" type="text" placeholder="HOSE:HCM" maxlength="20" />
-              <button type="button" id="btn-analyze" class="btn" style="background:#4c9ce2;color:#fff;">Khám
+              <button type="button" id="btn-analyze" class="btn" style="background:#4c9ce2;color:#fff;" data-tooltip="Lấy dữ liệu kỹ thuật và định giá nhanh">Khám
                 (Analyze)</button>
             </div>
             <span id="err-symbol" class="field-error"></span>
@@ -65,11 +75,6 @@
           <div id="analysis-card" class="field full-width"
             style="display:none; padding:8px; border-radius:6px; font-size:11px; margin-bottom: 4px; border: 1px solid var(--border-focus); background: rgba(76, 156, 226, 0.1);">
             <div id="analysis-card-content"></div>
-            <div style="margin-top:8px; display:flex; justify-content:flex-end;">
-              <button type="button" id="btn-ask-ai" class="btn"
-                style="background:linear-gradient(90deg, #1A73E8, #8E24AA); color:white; font-size:11px; padding:4px 8px;">Ask
-                AI 🤖</button>
-            </div>
           </div>
 
           <!-- Type -->
@@ -86,6 +91,15 @@
             <label for="inp-entry">Entry Price *</label>
             <input id="inp-entry" type="number" min="0" step="any" placeholder="0.00" />
             <span id="err-entry" class="field-error"></span>
+          </div>
+
+          <!-- Risk Amount -->
+          <div class="field">
+            <label for="inp-risk-amt" style="display:flex; justify-content:space-between;">
+              <span>Risk Amount</span>
+              <span id="lbl-risk-unit" style="font-size:10px; color:var(--text-muted);">VND</span>
+            </label>
+            <input id="inp-risk-amt" type="number" min="0" step="any" placeholder="optional (e.g. 1000000)" />
           </div>
 
           <!-- Quantity -->
@@ -122,11 +136,14 @@
       </form>
     </section>
 
+    <!-- ── Sector Concentration & Portfolio Health ── -->
+    <div id="portfolio-sector-health" style="display:none; margin: 10px 14px 0;"></div>
+
     <!-- ── Portfolio List ── -->
     <section class="list-section">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
         <div class="list-title" style="margin-bottom: 0;">📋 Portfolio</div>
-        <button id="btn-toggle-form" class="btn" style="background: var(--accent-blue); color: white;">➕ New
+        <button id="btn-toggle-form" class="btn" style="background: var(--accent-blue); color: white;" data-tooltip="Mở form thêm vị thế mới">➕ New
           Position</button>
       </div>
       <div id="portfolio-list"></div>
@@ -136,26 +153,37 @@
   <!-- ── AI Advisor Section ── -->
   <div id="section-advisor" class="tab-content">
     <section class="advisor-section">
-      <div class="advisor-header">
-        <div style="display:flex; align-items:center; gap:8px;">
-          <div class="list-title">🚀 Săn Cổ Phiếu</div>
-          <button id="btn-clear-scanner" class="btn"
-            style="background:none; border:none; color:var(--text-muted); font-size:11px; cursor:pointer; padding:0;">🗑
-            Xóa</button>
-        </div>
-        <div style="display:flex; flex-direction:column; gap:8px; align-items:flex-end;">
-          <div style="display:flex; gap:8px;">
-            <button id="btn-scan-market" class="btn"
-              style="background:var(--bg-hover); color:var(--text-primary); border:1px solid var(--border);">🔍 1. Quét
-              Dữ Liệu</button>
-            <button id="btn-ai-analyze" class="btn"
-              style="background:linear-gradient(90deg, #1A73E8, #8E24AA); color:white; display:none;">🤖 2. AI Phân
-              Tích</button>
+      <div class="advisor-header" style="display:flex; flex-direction:column; gap:10px; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div class="list-title" style="margin-bottom: 0; display:flex; align-items:center; gap:6px;">
+              <span>🚀 Săn Tín Hiệu:</span>
+              <select id="sel-asset-type" class="btn" style="background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); padding:2px 6px; font-size:11px; height:22px; border-radius:4px; cursor:pointer; font-weight:600; outline:none;">
+                <option value="STOCKS">📈 Cổ Phiếu VN</option>
+                <option value="CRYPTO">🪙 Crypto Top 20</option>
+              </select>
+            </div>
+            <button id="btn-clear-scanner" class="btn"
+              style="background:none; border:none; color:var(--text-muted); font-size:11px; cursor:pointer; padding:0;" data-tooltip="Xóa danh sách quét hiện tại">🗑 Xóa</button>
           </div>
-          <div class="target-input-group">
-            <label>Mục tiêu:</label>
-            <input id="inp-target-profit" type="number" value="1" step="0.5" style="width:40px;" />
-            <span>%/ngày</span>
+          <div style="display:flex; gap:6px;">
+            <button id="btn-scan-market" class="btn"
+              style="background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); padding:4px 10px; height:26px;" data-tooltip="Tải dữ liệu thị trường từ TradingView">🔍 1. Quét Dữ Liệu</button>
+            <button id="btn-ai-analyze" class="btn"
+              style="background:linear-gradient(90deg, #1A73E8, #8E24AA); color:white; display:none; padding:4px 10px; height:26px;" data-tooltip="Lọc ra các mã tối ưu bằng AI">🤖 2. AI Phân Tích</button>
+          </div>
+        </div>
+        
+        <div class="advisor-toolbar" style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.02); padding:6px 10px; border-radius:6px; border:1px solid var(--border); width:100%;">
+          <div style="display:flex; gap:16px; align-items:center; width:100%;">
+            <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+              <span>🎯 Rủi ro:</span>
+              <span id="risk-display" style="font-weight:600; color:var(--accent-blue);">Đang chờ cấu hình</span>
+            </div>
+            <div style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+              <span>📊 Kịch bản:</span>
+              <span id="scenario-display" style="font-weight:600; color:var(--text-primary);">Cân bằng (Medium)</span>
+            </div>
           </div>
         </div>
       </div>
@@ -169,7 +197,7 @@
               style="font-size:12px; color:var(--profit); border-bottom:none; margin-bottom:0; padding-bottom:0;">💎 Top
               Cổ Phiếu AI Khuyên Dùng</div>
             <button id="btn-clear-ai" class="btn"
-              style="background:none; border:none; color:var(--text-muted); font-size:10px; cursor:pointer;">🗑 Xóa Gợi
+              style="background:none; border:none; color:var(--text-muted); font-size:10px; cursor:pointer;" data-tooltip="Xóa các gợi ý cổ phiếu AI khuyên dùng hiện tại">🗑 Xóa Gợi
               Ý</button>
           </div>
           <div id="scanner-ai-results" class="scanner-results"></div>
@@ -188,17 +216,22 @@
     </section>
   </div><!-- /section-advisor -->
 
-  <!-- ── System Logs Section ── -->
-  <div id="section-logs" class="tab-content">
+  <!-- ── Deep Research Section ── -->
+  <div id="section-research" class="tab-content">
     <section class="advisor-section">
-      <div class="advisor-header">
-        <div class="list-title">📜 Nhật ký hệ thống</div>
-        <button id="btn-clear-logs" class="btn" style="background:var(--loss); color:white; font-size:11px;">🗑 Xóa
-          Log</button>
+      <div class="advisor-header" style="flex-direction:column; align-items:flex-start; gap:12px;">
+        <div class="list-title" style="width:100%;">🔍 Nghiên Cứu Cổ Phiếu Chuyên Sâu</div>
+        <div style="display:flex; gap:8px; width:100%;">
+          <input id="inp-deep-symbol" type="text" placeholder="Nhập mã (VD: HOSE:FPT)" style="flex:1; padding:8px; border-radius:4px; border:1px solid var(--border); background:var(--bg-input); color:var(--text-primary); text-transform:uppercase;" />
+          <button id="btn-deep-research" class="btn" style="background:var(--profit); color:white; padding:8px 16px;" data-tooltip="Bắt đầu phân tích sâu đa chiều cổ phiếu này bằng AI">Phân Tích</button>
+        </div>
       </div>
-      <div id="log-list" style="display:flex; flex-direction:column; gap:8px;">
-        <!-- Injected by ui.js -->
-        <div class="empty-state">Chưa có hoạt động nào được ghi lại.</div>
+      
+      <div id="deep-research-content" style="margin-top:16px;">
+        <div class="empty-state">
+          <div style="font-size:32px; margin-bottom:8px;">📈</div>
+          Nhập mã cổ phiếu để xem báo cáo phân tích đa chiều từ AI (Kỹ thuật & Cơ bản).
+        </div>
       </div>
     </section>
   </div>
@@ -247,6 +280,10 @@
             <div style="color:var(--text-muted);font-size:11px;">Giá thị trường</div>
             <strong id="dca-current">--</strong>
           </div>
+        </div>
+
+        <div id="dca-tech-advice" style="margin-bottom: 12px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 6px; border: 1px solid var(--border); font-size: 11px; line-height: 1.4; display: none;">
+          <!-- Injected by ui.js -->
         </div>
 
         <div class="field" style="margin-bottom:0;">
@@ -370,11 +407,11 @@
         <div class="field" style="margin-top:12px;">
           <label>API Key:</label>
           <div style="display:flex; gap:8px;">
-            <input type="password" id="inp-api-key" class="full-width" style="padding:8px;"
+            <input type="text" id="inp-api-key" class="full-width" style="padding:8px; font-family: monospace; font-size: 11px;"
               placeholder="Dán API Key vào đây..." />
             <button id="btn-fetch-models" class="btn"
               style="background:var(--bg-hover); color:var(--text-primary); border:1px solid var(--border); padding:8px;"
-              title="Lấy danh sách Models">🔄 Fetch</button>
+              data-tooltip="Tải danh sách mô hình từ nhà cung cấp">🔄 Fetch</button>
           </div>
           <i id="msg-api-key" style="color:var(--text-muted); font-size:11px; display:block; margin-top:4px;">Lấy Key
             tại: <a href="https://aistudio.google.com/app/apikey" target="_blank"
@@ -414,11 +451,23 @@
         </div>
 
         <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
+          <h4 style="margin:0 0 8px 0; font-size:12px; color:var(--text-primary);">🛡️ Quản Trị Vốn & Rủi Ro (Position Sizing)</h4>
+          <div class="field">
+            <label>Tổng vốn tài khoản (VNĐ hoặc USDT):</label>
+            <input type="number" id="inp-account-balance" class="full-width" style="padding:8px;" placeholder="VD: 100000000" />
+          </div>
+          <div class="field" style="margin-top:8px;">
+            <label>Rủi ro tối đa mỗi lệnh (% Vốn):</label>
+            <input type="number" id="inp-risk-percent" class="full-width" style="padding:8px;" min="0.1" max="50" step="0.1" placeholder="Mặc định: 2.0%" />
+          </div>
+        </div>
+
+        <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
           <h4 style="margin:0 0 8px 0; font-size:12px; color:var(--text-primary);">🤖 Telegram Notification (Broker)
           </h4>
           <div class="field">
             <label>Bot Token:</label>
-            <input type="password" id="inp-tg-token" class="full-width" style="padding:8px;"
+            <input type="text" id="inp-tg-token" class="full-width" style="padding:8px; font-family: monospace; font-size: 11px;"
               placeholder="Bot Token từ @BotFather..." />
           </div>
           <div class="field" style="margin-top:8px;">
@@ -465,59 +514,6 @@
         </div>
       </div>
     </div>
-  </div>
-
-  <!-- Floating Chat Button -->
-  <button id="btn-floating-chat" class="btn-floating-chat" title="Mở Trợ Lý AI"
-    style="display:flex;align-items:center;justify-content:center;position:fixed;bottom:20px;right:20px;width:50px;height:50px;border-radius:25px;background:linear-gradient(135deg, #1A73E8, #8E24AA);color:white;font-size:24px;border:none;box-shadow:0 4px 15px rgba(0,0,0,0.5);cursor:pointer;z-index:900;transition:transform 0.2s;">
-    🤖
-  </button>
-
-  <!-- Slide-over Chat Panel -->
-  <div id="panel-chat" class="panel-chat"
-    style="display:none;position:fixed;bottom:0;left:0;right:0;height:85vh;background:var(--bg-card);border-top:1px solid var(--border);border-radius:16px 16px 0 0;box-shadow:0 -5px 20px rgba(0,0,0,0.8);z-index:950;flex-direction:column;transform:translateY(100%);transition:transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);">
-    <!-- Chat Header -->
-    <div
-      style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--bg-secondary);border-radius:16px 16px 0 0;flex-shrink:0;">
-      <div style="display:flex;align-items:center;gap:6px;">
-        <span style="font-size:18px;">🤖</span>
-        <h3 style="margin:0;font-size:14px;color:var(--text-primary);">Trading Assistant</h3>
-      </div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button id="btn-chat-clear" class="btn"
-          style="background:transparent;border:1px solid var(--border);color:var(--text-muted);font-size:11px;padding:4px 8px;">🗑️
-          Clear</button>
-        <button id="btn-chat-close"
-          style="background:transparent;border:none;color:var(--text-muted);font-size:20px;cursor:pointer;line-height:1;margin-top:-2px;">&times;</button>
-      </div>
-    </div>
-
-    <!-- Chat Messages -->
-    <div id="chat-messages"
-      style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;font-size:13px;line-height:1.5;">
-      <div class="chat-msg ai-msg">
-        Xin chào! Tôi là Trợ Lý AI. Tôi đã sẵn sàng để giúp bạn lọc tín hiệu, tính DCA hoặc quản trị rủi ro danh mục hôm
-        nay.
-      </div>
-    </div>
-
-    <!-- Chat Input Form -->
-    <form id="chat-form"
-      style="padding:12px 16px;border-top:1px solid var(--border);background:var(--bg-secondary);margin:0;flex-shrink:0;">
-      <div style="display:flex;gap:8px;align-items:flex-end;">
-        <textarea id="inp-chat" placeholder="Hỏi AI bất kỳ điều gì..."
-          style="flex:1;height:40px;min-height:40px;max-height:100px;resize:none;padding:10px 12px;font-size:13px;border-radius:20px;background:var(--bg-primary);color:var(--text-primary);border:1px solid var(--border);outline:none;font-family:inherit;line-height:1.4;transition:border-color 0.15s;"></textarea>
-        <button type="submit" id="btn-chat-send" class="btn"
-          style="background:var(--accent-blue);color:white;border-radius:50%;width:40px;height:40px;display:flex;align-items:center;justify-content:center;padding:0;flex-shrink:0;transition:opacity 0.2s;"
-          disabled>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            stroke-linecap="round" stroke-linejoin="round">
-            <line x1="22" y1="2" x2="11" y2="13"></line>
-            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-          </svg>
-        </button>
-      </div>
-    </form>
   </div>
 
   <script type="module" src="popup.js"></script>

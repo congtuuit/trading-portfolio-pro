@@ -30,10 +30,12 @@ build/
 .env.local
 .env.*.local
 secrets.json
+sample*.txt
 
 # ── AI / Brain context (local only) ──────────────
 .brain/
 .gemini/
+.claude/plans/
 
 # ── Logs ─────────────────────────────────────────
 logs/

@@ -1,0 +1,929 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © congtuuit — Hybrid Trading System V5.5 — 3-Layer Confluence Engine
+// Bản Việt Hoá Toàn Diện + SMC FVG + Quét Thanh Khoản (Liquidity Sweep) + Lọc Xu Hướng ADX + Dashboard 3 Cột
+
+//@version=5
+indicator("Hybrid Trading System V5.5 — 3-Layer (VN)", overlay=true, max_boxes_count=500, max_labels_count=500, max_lines_count=300)
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  1) DATA MODEL                                    ║
+// ╚═══════════════════════════════════════════════════╝
+type Zone
+    float top
+    float bottom
+    int   start_bar
+    int   zone_type       // 1 = Demand (Cầu), -1 = Supply (Cung)
+    int   touch_count
+    float strength_score
+    bool  is_active
+    bool  is_triggered
+    box   box_id
+
+type FVG
+    float top
+    float bottom
+    int   start_time
+    int   fvg_type        // 1 = Bullish FVG, -1 = Bearish FVG
+    bool  is_mitigated
+    box   box_id
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  2) INPUTS                                        ║
+// ╚═══════════════════════════════════════════════════╝
+
+// ── Layer 1: Context ──
+grp_ctx = "🔷 Lớp 1: Bối Cảnh Thị Trường"
+ema_length     = input.int(200,  "Chu kỳ EMA Xu hướng",       minval=1,   group=grp_ctx)
+struct_left    = input.int(10,   "Số nến xác nhận đỉnh/đáy (Trái)", minval=3, group=grp_ctx)
+struct_right   = input.int(3,    "Số nến xác nhận đỉnh/đáy (Phải)", minval=1, group=grp_ctx)
+
+grp_htf = "📡 Đa Khung Thời Gian (HTF)"
+use_mtf    = input.bool(true,   "Bật lọc xu hướng khung lớn",  group=grp_htf)
+htf_mode   = input.string("Auto (Tự động)","Chế độ Khung Lớn", options=["Auto (Tự động)","Custom (Tùy chỉnh)"], group=grp_htf)
+htf_custom = input.timeframe("1D","Khung Lớn Tùy Chỉnh",       group=grp_htf)
+htf_ema_l  = input.int(200,     "Chu kỳ EMA Khung Lớn",        group=grp_htf, minval=1)
+
+grp_adx = "🌊 Chế Độ Thị Trường (ADX / Trend Strength)"
+use_adx_filter = input.bool(true, "Bật Lọc Xu Hướng ADX", group=grp_adx)
+adx_len        = input.int(14,    "Chu kỳ ADX", minval=1, group=grp_adx)
+adx_threshold  = input.float(20.0,"Ngưỡng Xu Hướng Tối Thiểu (ADX)", minval=10.0, step=1.0, group=grp_adx)
+
+grp_session = "🕐 Bộ Lọc Phiên Giao Dịch"
+use_session_filter = input.bool(true,       "Chỉ giao dịch trong phiên",  group=grp_session)
+london_sess        = input.session("0800-1600","Giờ London (UTC)",             group=grp_session)
+ny_sess            = input.session("1300-2100","Giờ New York (UTC)",           group=grp_session)
+
+// ── Layer 2: Zones & FVG ──
+grp_zone = "🧱 Lớp 2: Vùng Cung/Cầu (Zones)"
+pivot_left    = input.int(20,    "Nến dò Vùng (Trái)",           minval=1,   group=grp_zone)
+pivot_right   = input.int(5,     "Nến dò Vùng (Phải)",           minval=1,   group=grp_zone)
+atr_length    = input.int(14,    "Chu kỳ đo biến động (ATR)",   minval=1,   group=grp_zone)
+atr_zone_mult = input.float(0.5, "Độ rộng Vùng (Hệ số ATR)",    minval=0.1, step=0.1, group=grp_zone)
+max_active_zones  = input.int(12,"Số Vùng Cản Tối Đa",         minval=1,   maxval=50, group=grp_zone)
+min_zone_distance = input.float(0.4,"Khoảng cách Vùng Min (ATR)", minval=0.1, step=0.1, group=grp_zone)
+req_imbalance     = input.bool(false,"Chỉ lấy Vùng có Lực Đẩy mạnh", tooltip="Yêu cầu nến ngay sau đỉnh/đáy phải dài > 0.8 ATR", group=grp_zone)
+first_touch_only  = input.bool(true, "Chỉ giao dịch khi giá chạm Lần Đầu", group=grp_zone)
+delete_invalidated = input.bool(false,"Xoá hộp khi bị giá phá vỡ",      group=grp_zone)
+
+grp_fvg = "⚡ Lớp 2.1: Khoảng Trống Giá (Fair Value Gap - FVG)"
+show_fvg      = input.bool(true, "Hiện Vùng FVG (Imbalance)", group=grp_fvg)
+fvg_min_atr   = input.float(0.4, "Độ rộng FVG tối thiểu (Hệ số ATR)", minval=0.1, step=0.1, group=grp_fvg)
+max_fvg_count = input.int(8,     "Số lượng FVG tối đa", minval=1, maxval=20, group=grp_fvg)
+
+// ── Layer 3: Trigger & Liquidity Sweeps ──
+grp_trigger = "🎯 Lớp 3: Tín Hiệu Kích Hoạt & Quét Thanh Khoản"
+show_pattern_boxes = input.bool(true, "Khoanh ô Mô hình Nến",      group=grp_trigger)
+show_sweeps        = input.bool(true, "Hiện Dấu Vết Quét Râu Đỉnh/Đáy (Liquidity Sweep)", group=grp_trigger)
+rsi_length     = input.int(14,   "Chu kỳ RSI (Đo Phân Kỳ)",     minval=2,   group=grp_trigger)
+rsi_div_left   = input.int(5,    "Nến dò Phân Kỳ (Trái)",       minval=2,   group=grp_trigger)
+rsi_div_right  = input.int(5,    "Nến dò Phân Kỳ (Phải)",       minval=2,   group=grp_trigger)
+use_vol_filter = input.bool(false,"Cộng điểm nếu Volume Đột Biến",  group=grp_trigger)
+vol_ma_length  = input.int(20,   "Chu kỳ MA Volume",            group=grp_trigger, minval=1)
+vol_surge_mult = input.float(1.5,"Volume tối thiểu = ? x MA",   group=grp_trigger, minval=1.0, step=0.1)
+
+// ── Confluence ──
+grp_score = "⭐ Điểm Đồng Thuận (Confluence)"
+min_score = input.float(4.5, "Điểm tối thiểu để báo Tín Hiệu (0–10)", group=grp_score, minval=0, maxval=10, step=0.5, tooltip="Dưới 4.5: Yếu. Từ 4.5-6.5: Trung bình. Trên 6.5: Rất Mạnh.")
+
+// ── Risk Management ──
+grp_risk = "🛡 Quản Trị Rủi Ro & Position Sizing"
+show_sl_tp   = input.bool(true,  "Hiện Đường Cắt Lỗ/Chốt Lời", group=grp_risk)
+sl_atr_mult  = input.float(1.5,  "Khoảng cách SL = ATR × ?",   group=grp_risk, minval=0.1, step=0.1)
+rr_ratio_1   = input.float(1.5,  "R:R cho Chốt Lời 1 (TP1)",   group=grp_risk, minval=0.5, step=0.5)
+rr_ratio_2   = input.float(3.0,  "R:R cho Chốt Lời 2 (TP2)",   group=grp_risk, minval=1.0, step=0.5)
+account_bal  = input.float(10000,"Tổng Vốn Tài Khoản ($ hoặc VNĐ)", group=grp_risk, minval=100)
+risk_pct     = input.float(1.5,  "Rủi ro tối đa / Lệnh (%)",   group=grp_risk, minval=0.1, step=0.1)
+is_forex     = input.bool(false, "Đang trade Forex? (Tính Lot thay vì Unit/Cổ)", group=grp_risk)
+
+// ── Visual ──
+grp_vis = "🎨 Giao Diện"
+show_structure   = input.bool(true, "Hiện Ký Hiệu Phá Cấu Trúc (BOS/ChoCH)", group=grp_vis)
+show_bb          = input.bool(true, "Hiện dải Bollinger Bands",   group=grp_vis)
+show_ema         = input.bool(true, "Hiện đường EMA Xu hướng",    group=grp_vis)
+label_signals    = input.bool(true, "Hiện Nhãn MUA/BÁN",         group=grp_vis)
+show_trend_bg    = input.bool(true, "Đổi Màu Nền theo Xu Hướng", group=grp_vis)
+show_dashboard   = input.bool(true, "Hiện Bảng Điều Khiển (Dashboard)", group=grp_vis)
+dash_notes       = input.bool(true, "Hiện Cột Giải Thích trên Dashboard",  group=grp_vis)
+
+// ── Cấu hình Ẩn/Hiện Từng Mục Dashboard ──
+show_rsi_div      = input.bool(true, "Hiện Đường/Nhãn Phân Kỳ RSI", group=grp_vis)
+show_prob_table   = input.bool(true, "Hiện Bảng Dự Báo Xác Suất", group=grp_vis)
+dash_show_session = input.bool(true, "Hiện Dòng Phiên Giao Dịch", group=grp_vis)
+dash_show_adx     = input.bool(true, "Hiện Dòng Độ Mạnh Xu Hướng (ADX)", group=grp_vis)
+dash_show_htf     = input.bool(true, "Hiện Dòng Xu Hướng Khung Lớn", group=grp_vis)
+dash_show_ema     = input.bool(true, "Hiện Dòng Mức Giá vs EMA", group=grp_vis)
+dash_show_struct  = input.bool(true, "Hiện Dòng Cấu Trúc (SMC)", group=grp_vis)
+dash_show_rsi     = input.bool(true, "Hiện Dòng Chỉ Báo RSI", group=grp_vis)
+dash_show_div     = input.bool(true, "Hiện Dòng RSI Phân Kỳ", group=grp_vis)
+dash_show_bb      = input.bool(true, "Hiện Dòng Bollinger Bands", group=grp_vis)
+dash_show_vol     = input.bool(true, "Hiện Dòng Khối Lượng (Vol)", group=grp_vis)
+dash_show_fvg     = input.bool(true, "Hiện Dòng FVG Đang Chờ", group=grp_vis)
+dash_show_zones   = input.bool(true, "Hiện Dòng Vùng Cản Chờ Sẵn", group=grp_vis)
+dash_show_wr      = input.bool(true, "Hiện Dòng Lịch Sử Thắng", group=grp_vis)
+
+// ── Kháng cự / Hỗ trợ ngang & Trendline ──
+grp_sr_tl = "🎯 Hỗ Trợ/Kháng Cự & Trendline"
+show_sr_lines   = input.bool(true, "Hiện Đường Kháng Cự/Hỗ Trợ Ngang", group=grp_sr_tl)
+sr_left         = input.int(20, "Pivot Hỗ Trợ/Kháng Cự (Trái)", minval=5, group=grp_sr_tl)
+sr_right        = input.int(10, "Pivot Hỗ Trợ/Kháng Cự (Phải)", minval=2, group=grp_sr_tl)
+show_trendlines = input.bool(true, "Hiện Đường Trendline Tự Động", group=grp_sr_tl)
+tl_left         = input.int(15, "Pivot Trendline (Trái)", minval=5, group=grp_sr_tl)
+tl_right        = input.int(5, "Pivot Trendline (Phải)", minval=2, group=grp_sr_tl)
+
+// ── Win-Rate ──
+grp_wr = "📊 Thống Kê"
+future_sessions      = input.int(5,    "Đánh giá lệnh sau bao nhiêu nến?", group=grp_wr, minval=1, maxval=50)
+winrate_min_samples  = input.int(5,    "Cần tối thiểu bao nhiêu lệnh để tính?", group=grp_wr, minval=1)
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  3) STATE                                         ║
+// ╚═══════════════════════════════════════════════════╝
+var Zone[] active_zones = array.new<Zone>()
+var FVG[]  active_fvgs  = array.new<FVG>()
+var bool buy_signal     = false
+var bool sell_signal    = false
+
+// Structure tracking
+var float last_sh   = na
+var float last_sl   = na
+var int   mkt_structure = 0   // 1=bull, -1=bear, 0=undefined
+
+// RSI Divergence state
+var float prev_rsi_low      = na
+var float prev_price_at_rsi_low = na
+var float prev_rsi_high     = na
+var float prev_price_at_rsi_high = na
+var int   prev_rsi_low_bar   = na
+var int   prev_rsi_high_bar  = na
+
+// Hỗ trợ / Kháng cự ngang & Trendline state
+var line res_line = na
+var line sup_line = na
+var line bearish_tl = na
+var line bullish_tl = na
+
+var int ph2_x = na
+var float ph2_y = na
+var int ph1_x = na
+var float ph1_y = na
+var int pl2_x = na
+var float pl2_y = na
+var int pl1_x = na
+var float pl1_y = na
+
+// Win-rate buffers (per-bar SL check)
+var int[]   wr_bars    = array.new<int>()
+var float[] wr_prices  = array.new<float>()
+var float[] wr_sls     = array.new<float>()
+var int[]   wr_dirs    = array.new<int>()
+var bool[]  wr_sl_hit  = array.new<bool>()
+var int     buy_wins   = 0
+var int     buy_total  = 0
+var int     sell_wins  = 0
+var int     sell_total = 0
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  4) CORE SERIES & ADX REGIME                      ║
+// ╚═══════════════════════════════════════════════════╝
+atr_val      = ta.atr(atr_length)
+ema_regime   = ta.ema(close, ema_length)
+is_uptrend   = close > ema_regime
+is_downtrend = close < ema_regime
+
+// ── ADX (Average Directional Index) ──
+calc_dirmov(len) =>
+    up = ta.change(high)
+    down = -ta.change(low)
+    plusDM = na(up) ? na : (up > down and up > 0 ? up : 0)
+    minusDM = na(down) ? na : (down > up and down > 0 ? down : 0)
+    truerange = ta.rma(ta.tr, len)
+    plus = fixnan(100 * ta.rma(plusDM, len) / truerange)
+    minus = fixnan(100 * ta.rma(minusDM, len) / truerange)
+    [plus, minus]
+
+calc_adx(len, dirmov_len) =>
+    [plus, minus] = calc_dirmov(dirmov_len)
+    sum = plus + minus
+    adx_val = 100 * ta.rma(math.abs(plus - minus) / (sum == 0 ? 1 : sum), len)
+    [adx_val, plus, minus]
+
+[adx_value, di_plus, di_minus] = calc_adx(adx_len, adx_len)
+is_trending = adx_value >= adx_threshold
+is_choppy   = adx_value < adx_threshold
+
+// ── Bollinger Bands ──
+bb_basis = ta.sma(close, 20)
+bb_dev   = 2.0 * ta.stdev(close, 20)
+bb_upper = bb_basis + bb_dev
+bb_lower = bb_basis - bb_dev
+bb_width = (bb_upper - bb_lower) / bb_basis
+bb_squeeze = bb_width <= ta.lowest(bb_width, 50) * 1.1
+bb_pct = (bb_upper - bb_lower) == 0 ? 50.0 : (close - bb_lower) / (bb_upper - bb_lower) * 100
+
+plot(show_bb ? bb_basis : na, "Đường Giữa BB",   color=color.new(#2962FF, 60))
+p_bbu = plot(show_bb ? bb_upper : na, "Biên Trên BB", color=color.new(#F23645, 60))
+p_bbl = plot(show_bb ? bb_lower : na, "Biên Dưới BB", color=color.new(#089981, 60))
+fill(p_bbu, p_bbl, title="Nền BB", color=color.rgb(33, 150, 243, 95))
+plot(show_ema ? ema_regime : na, "EMA Xu Hướng", color=color.new(color.gray, 30), linewidth=2)
+
+// ── Volume ──
+vol_ma     = ta.sma(volume, vol_ma_length)
+vol_surge  = volume >= vol_ma * vol_surge_mult
+
+// ── HTF (Anti-Repaint) ──
+get_auto_htf() =>
+    string res = "D"
+    if timeframe.isintraday
+        if timeframe.multiplier <= 5
+            res := "60"
+        else if timeframe.multiplier <= 30
+            res := "240"
+        else if timeframe.multiplier <= 240
+            res := "D"
+        else
+            res := "W"
+    else if timeframe.isdaily
+        res := "W"
+    else if timeframe.isweekly
+        res := "M"
+    res
+
+actual_htf = htf_mode == "Auto (Tự động)" ? get_auto_htf() : htf_custom
+htf_ema    = request.security(syminfo.tickerid, actual_htf, ta.ema(close, htf_ema_l)[1], lookahead=barmerge.lookahead_on)
+htf_bull   = close > htf_ema
+htf_bear   = close < htf_ema
+
+// ── Session ──
+in_london = not na(time(timeframe.period, london_sess, "UTC"))
+in_ny     = not na(time(timeframe.period, ny_sess,     "UTC"))
+in_session = in_london or in_ny
+session_ok = use_session_filter and timeframe.isintraday ? in_session : true
+
+// ── RSI ──
+rsi_val = ta.rsi(close, rsi_length)
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  5) LAYER 1: MARKET STRUCTURE & LIQUIDITY SWEEPS  ║
+// ╚═══════════════════════════════════════════════════╝
+struct_ph = ta.pivothigh(high, struct_left, struct_right)
+struct_pl = ta.pivotlow(low,   struct_left, struct_right)
+
+if not na(struct_ph)
+    last_sh    := struct_ph
+
+if not na(struct_pl)
+    last_sl    := struct_pl
+
+// ── Liquidity Sweeps (Quét râu đỉnh/đáy) ──
+bull_sweep = not na(last_sl) and low < last_sl and close > last_sl and (close - low) > (high - low) * 0.4
+bear_sweep = not na(last_sh) and high > last_sh and close < last_sh and (high - close) > (high - low) * 0.4
+
+plotshape(show_sweeps and bull_sweep, title="Quét Đáy (Bull Sweep)", style=shape.circle, location=location.belowbar, color=color.new(color.teal, 0), size=size.tiny, text="Sweep⚡")
+plotshape(show_sweeps and bear_sweep, title="Quét Đỉnh (Bear Sweep)", style=shape.circle, location=location.abovebar, color=color.new(color.fuchsia, 0), size=size.tiny, text="Sweep⚡")
+
+// Break of Structure
+bos_bull = not na(last_sh) and close > last_sh and close[1] <= last_sh
+bos_bear = not na(last_sl) and close < last_sl and close[1] >= last_sl
+
+// Change of Character
+var int prev_mkt_structure = 0
+if barstate.isconfirmed
+    prev_mkt_structure := mkt_structure
+    if bos_bull
+        mkt_structure := 1
+    if bos_bear
+        mkt_structure := -1
+
+choch_bull = prev_mkt_structure == -1 and bos_bull
+choch_bear = prev_mkt_structure ==  1 and bos_bear
+
+plotshape(show_structure and bos_bull and not choch_bull, title="BOS Tăng", style=shape.triangleup,   location=location.belowbar, color=color.new(color.teal, 20),   size=size.tiny, text="BOS↑")
+plotshape(show_structure and bos_bear and not choch_bear, title="BOS Giảm", style=shape.triangledown, location=location.abovebar, color=color.new(color.red, 20),    size=size.tiny, text="BOS↓")
+plotshape(show_structure and choch_bull,                  title="Đảo Chiều Tăng",style=shape.diamond,      location=location.belowbar, color=color.new(color.lime, 0),    size=size.small, text="ChoCH↑")
+plotshape(show_structure and choch_bear,                  title="Đảo Chiều Giảm",style=shape.diamond,      location=location.abovebar, color=color.new(color.orange, 0),  size=size.small, text="ChoCH↓")
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  5.1) FAIR VALUE GAP (FVG) ENGINE                 ║
+// ╚═══════════════════════════════════════════════════╝
+bull_fvg_detected = low > high[2] and (low - high[2]) >= atr_val * fvg_min_atr and close[1] > open[1]
+bear_fvg_detected = high < low[2] and (low[2] - high) >= atr_val * fvg_min_atr and close[1] < open[1]
+
+if show_fvg and barstate.isconfirmed
+    if bull_fvg_detected and array.size(active_fvgs) < max_fvg_count
+        f_top = low
+        f_bot = high[2]
+        f_box = box.new(left=time[2], top=f_top, right=time, bottom=f_bot, xloc=xloc.bar_time, bgcolor=color.new(color.green, 88), border_color=color.new(color.green, 40), border_style=line.style_dashed)
+        array.push(active_fvgs, FVG.new(f_top, f_bot, time[2], 1, false, f_box))
+
+    if bear_fvg_detected and array.size(active_fvgs) < max_fvg_count
+        f_top = low[2]
+        f_bot = high
+        f_box = box.new(left=time[2], top=f_top, right=time, bottom=f_bot, xloc=xloc.bar_time, bgcolor=color.new(color.red, 88), border_color=color.new(color.red, 40), border_style=line.style_dashed)
+        array.push(active_fvgs, FVG.new(f_top, f_bot, time[2], -1, false, f_box))
+
+// Update & Mitigate FVG
+var bool in_bull_fvg = false
+var bool in_bear_fvg = false
+
+in_bull_fvg := false
+in_bear_fvg := false
+
+if array.size(active_fvgs) > 0
+    for k = array.size(active_fvgs) - 1 to 0
+        fvg_item = array.get(active_fvgs, k)
+        box.set_right(fvg_item.box_id, time)
+
+        // Check if price is resting in FVG
+        if low <= fvg_item.top and high >= fvg_item.bottom
+            if fvg_item.fvg_type == 1
+                in_bull_fvg := true
+            else
+                in_bear_fvg := true
+
+        // Check if completely filled/mitigated
+        is_filled = fvg_item.fvg_type == 1 ? close < fvg_item.bottom : close > fvg_item.top
+        if is_filled
+            fvg_item.is_mitigated := true
+            box.delete(fvg_item.box_id)
+            array.remove(active_fvgs, k)
+        else
+            array.set(active_fvgs, k, fvg_item)
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  6) LAYER 3: RSI DIVERGENCE                       ║
+// ╚═══════════════════════════════════════════════════╝
+rsi_pivot_low  = ta.pivotlow(rsi_val,  rsi_div_left, rsi_div_right)
+rsi_pivot_high = ta.pivothigh(rsi_val, rsi_div_left, rsi_div_right)
+
+bull_rsi_div = false
+bear_rsi_div = false
+
+if not na(rsi_pivot_low)
+    curr_rsi_low     = rsi_pivot_low
+    curr_price_low   = low[rsi_div_right]
+    curr_rsi_low_bar = bar_index[rsi_div_right]
+    if not na(prev_rsi_low)
+        if curr_price_low < prev_price_at_rsi_low and curr_rsi_low > prev_rsi_low
+            bull_rsi_div := true
+            if show_rsi_div
+                line.new(x1=prev_rsi_low_bar, y1=prev_price_at_rsi_low, x2=curr_rsi_low_bar, y2=curr_price_low, color=color.lime, width=2, style=line.style_dashed)
+                label.new(x=curr_rsi_low_bar, y=curr_price_low, text="Phân Kỳ Tăng RSI", style=label.style_label_up, color=color.new(color.green, 20), textcolor=color.white, size=size.small)
+    prev_rsi_low            := curr_rsi_low
+    prev_price_at_rsi_low   := curr_price_low
+    prev_rsi_low_bar        := curr_rsi_low_bar
+
+if not na(rsi_pivot_high)
+    curr_rsi_high     = rsi_pivot_high
+    curr_price_high   = high[rsi_div_right]
+    curr_rsi_high_bar = bar_index[rsi_div_right]
+    if not na(prev_rsi_high)
+        if curr_price_high > prev_price_at_rsi_high and curr_rsi_high < prev_rsi_high
+            bear_rsi_div := true
+            if show_rsi_div
+                line.new(x1=prev_rsi_high_bar, y1=prev_price_at_rsi_high, x2=curr_rsi_high_bar, y2=curr_price_high, color=color.red, width=2, style=line.style_dashed)
+                label.new(x=curr_rsi_high_bar, y=curr_price_high, text="Phân Kỳ Giảm RSI", style=label.style_label_down, color=color.new(color.red, 20), textcolor=color.white, size=size.small)
+    prev_rsi_high            := curr_rsi_high
+    prev_price_at_rsi_high   := curr_price_high
+    prev_rsi_high_bar        := curr_rsi_high_bar
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  6.1) SUPPORT / RESISTANCE & TRENDLINES           ║
+// ╚═══════════════════════════════════════════════════╝
+sr_ph = ta.pivothigh(high, sr_left, sr_right)
+sr_pl = ta.pivotlow(low,   sr_left, sr_right)
+
+if show_sr_lines
+    if not na(sr_ph)
+        line.delete(res_line)
+        res_line := line.new(x1=bar_index[sr_right], y1=sr_ph, x2=bar_index, y2=sr_ph, color=color.new(color.red, 20), width=1, style=line.style_solid, extend=extend.right)
+    if not na(sr_pl)
+        line.delete(sup_line)
+        sup_line := line.new(x1=bar_index[sr_right], y1=sr_pl, x2=bar_index, y2=sr_pl, color=color.new(color.green, 20), width=1, style=line.style_solid, extend=extend.right)
+
+tl_ph = ta.pivothigh(high, tl_left, tl_right)
+tl_pl = ta.pivotlow(low,   tl_left, tl_right)
+
+if show_trendlines
+    if not na(tl_ph)
+        ph2_x := ph1_x
+        ph2_y := ph1_y
+        ph1_x := bar_index[tl_right]
+        ph1_y := tl_ph
+        if not na(ph2_x)
+            line.delete(bearish_tl)
+            bearish_tl := line.new(x1=ph2_x, y1=ph2_y, x2=ph1_x, y2=ph1_y, color=color.new(color.red, 0), width=2, style=line.style_solid, extend=extend.right)
+
+    if not na(tl_pl)
+        pl2_x := pl1_x
+        pl2_y := pl1_y
+        pl1_x := bar_index[tl_right]
+        pl1_y := tl_pl
+        if not na(pl2_x)
+            line.delete(bullish_tl)
+            bullish_tl := line.new(x1=pl2_x, y1=pl2_y, x2=pl1_x, y2=pl1_y, color=color.new(color.green, 0), width=2, style=line.style_solid, extend=extend.right)
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  7) LAYER 3: CANDLESTICK PATTERNS (CÓ BOX)        ║
+// ╚═══════════════════════════════════════════════════╝
+body_size  = math.abs(close - open)
+is_bull_c  = close > open
+is_bear_c  = close < open
+avg_body   = ta.sma(body_size, 20)
+upper_wick = high - math.max(open, close)
+lower_wick = math.min(open, close) - low
+
+is_hammer = lower_wick >= body_size * 2 and upper_wick <= body_size * 0.5 and body_size > 0 and body_size >= avg_body * 0.25
+is_shooting_star = upper_wick >= body_size * 2 and lower_wick <= body_size * 0.5 and body_size > 0 and body_size >= avg_body * 0.25
+
+bull_engulf = is_bear_c[1] and is_bull_c and close > open[1] and open <= close[1] and body_size > math.abs(close[1] - open[1])
+bear_engulf = is_bull_c[1] and is_bear_c and close < open[1] and open >= close[1] and body_size > math.abs(close[1] - open[1])
+
+morning_star = is_bear_c[2] and body_size[2] > avg_body and body_size[1] < avg_body * 0.5 and is_bull_c and close > (open[2] + close[2]) / 2
+evening_star = is_bull_c[2] and body_size[2] > avg_body and body_size[1] < avg_body * 0.5 and is_bear_c and close < (open[2] + close[2]) / 2
+
+bullish_pattern = is_hammer or bull_engulf or morning_star
+bearish_pattern = is_shooting_star or bear_engulf or evening_star
+
+get_bull_pattern_name() =>
+    morning_star ? "Morning Star" : bull_engulf ? "Bullish Engulfing" : is_hammer ? "Hammer" : "Mô Hình Tăng"
+get_bear_pattern_name() =>
+    evening_star ? "Evening Star" : bear_engulf ? "Bearish Engulfing" : is_shooting_star ? "Shooting Star" : "Mô Hình Giảm"
+
+draw_pattern_box(int n_candles, string name, bool is_bullish) =>
+    if show_pattern_boxes
+        top_y = ta.highest(high, n_candles)
+        bot_y = ta.lowest(low, n_candles)
+        c_bg  = is_bullish ? color.new(color.lime, 90) : color.new(color.red, 90)
+        c_brd = is_bullish ? color.new(color.lime, 40) : color.new(color.red, 40)
+        b = box.new(left=bar_index - (n_candles-1), top=top_y, right=bar_index, bottom=bot_y,
+             bgcolor=c_bg, border_color=c_brd, border_width=1)
+        l = label.new(bar_index - math.floor((n_candles-1)/2), is_bullish ? bot_y : top_y, text=name,
+             style=is_bullish ? label.style_label_up : label.style_label_down,
+             color=color.new(color.black, 100), textcolor=c_brd, size=size.normal)
+
+if barstate.isconfirmed
+    if morning_star
+        draw_pattern_box(3, "M-Star", true)
+    else if bull_engulf
+        draw_pattern_box(2, "Engulf", true)
+    else if is_hammer
+        draw_pattern_box(1, "Hammer", true)
+
+    if evening_star
+        draw_pattern_box(3, "E-Star", false)
+    else if bear_engulf
+        draw_pattern_box(2, "Engulf", false)
+    else if is_shooting_star
+        draw_pattern_box(1, "Shooting", false)
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  8) ZONE ENGINE                                   ║
+// ╚═══════════════════════════════════════════════════╝
+ph = ta.pivothigh(high, pivot_left, pivot_right)
+pl = ta.pivotlow(low,   pivot_left, pivot_right)
+
+buy_signal  := false
+sell_signal := false
+
+get_zone_half() => atr_val * atr_zone_mult
+zone_mid(float t, float b) => (t + b) * 0.5
+
+is_zone_dup(float t, float b, int ztype) =>
+    bool dup = false
+    mid = zone_mid(t, b)
+    thr = atr_val * min_zone_distance
+    if array.size(active_zones) > 0
+        for i = 0 to array.size(active_zones) - 1
+            z = array.get(active_zones, i)
+            if z.is_active and z.zone_type == ztype
+                if math.abs(mid - zone_mid(z.top, z.bottom)) <= thr
+                    dup := true
+                    break
+    dup
+
+create_zone(float pivot_price, int ztype) =>
+    hw     = get_zone_half()
+    z_top  = ztype == 1 ? pivot_price : pivot_price + hw
+    z_bot  = ztype == 1 ? pivot_price - hw : pivot_price
+    z_col  = ztype == 1 ? color.new(color.green, 82) : color.new(color.red, 82)
+    z_bdr  = ztype == 1 ? color.new(color.green, 20) : color.new(color.red, 20)
+    z_box  = box.new(left=time[pivot_right], top=z_top, right=time, bottom=z_bot, xloc=xloc.bar_time, bgcolor=z_col, border_color=z_bdr, border_style=line.style_dotted)
+    vol_bonus = volume[pivot_right] >= vol_ma * 1.5 ? 0.25 : 0.0
+    Zone.new(z_top, z_bot, bar_index[pivot_right], ztype, 0, 1.0 + vol_bonus, true, false, z_box)
+
+is_zone_touched(Zone z) => low <= z.top and high >= z.bottom
+// Chỉ tính một lần khi giá đi từ ngoài vào vùng, tránh tăng touch_count ở mọi cây nến nằm trong vùng.
+was_zone_touched(Zone z) =>
+    bar_index > 0 and low[1] <= z.top and high[1] >= z.bottom
+is_zone_new_touch(Zone z) => is_zone_touched(z) and not was_zone_touched(z)
+is_zone_broken(Zone z)  => z.zone_type == 1 ? close < z.bottom : close > z.top
+
+fade_zone(Zone z) =>
+    if delete_invalidated
+        box.delete(z.box_id)
+    else
+        box.set_bgcolor(z.box_id, color.new(color.gray, 92))
+        box.set_border_color(z.box_id, color.new(color.gray, 60))
+
+if not na(ph)
+    body_after = math.abs(close[pivot_right - 1] - open[pivot_right - 1])
+    is_imbal   = close[pivot_right - 1] < open[pivot_right - 1] and body_after > atr_val[pivot_right - 1] * 0.8
+    if not req_imbalance or is_imbal
+        hw = get_zone_half()
+        if array.size(active_zones) < max_active_zones and not is_zone_dup(ph + hw, ph, -1)
+            array.push(active_zones, create_zone(ph, -1))
+
+if not na(pl)
+    body_after = math.abs(close[pivot_right - 1] - open[pivot_right - 1])
+    is_imbal   = close[pivot_right - 1] > open[pivot_right - 1] and body_after > atr_val[pivot_right - 1] * 0.8
+    if not req_imbalance or is_imbal
+        hw = get_zone_half()
+        if array.size(active_zones) < max_active_zones and not is_zone_dup(pl, pl - hw, 1)
+            array.push(active_zones, create_zone(pl, 1))
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  9) CONFLUENCE SCORING V5.5                       ║
+// ╚═══════════════════════════════════════════════════╝
+buy_confluence(Zone z) =>
+    float s = 0.0
+    s += is_uptrend ? 1.0 : 0.0
+    s += mkt_structure == 1 ? 1.5 : mkt_structure == 0 ? 0.5 : 0.0
+    s += (use_mtf ? htf_bull : true) ? 1.0 : 0.0
+    s += (use_adx_filter ? is_trending : true) ? 0.5 : 0.0
+    s += session_ok ? 0.5 : 0.0
+    s += z.touch_count <= 1 ? 1.0 : z.touch_count == 2 ? 0.5 : 0.0
+    s += z.strength_score >= 1.0 ? 1.0 : z.strength_score * 1.0
+    s += bullish_pattern ? 1.5 : 0.0
+    s += bull_rsi_div ? 1.5 : 0.0
+    s += in_bull_fvg ? 1.0 : 0.0       // Bonus FVG
+    s += bull_sweep ? 1.0 : 0.0        // Bonus Liquidity Sweep
+    s += (use_vol_filter and vol_surge) ? 0.5 : 0.0
+    s
+
+sell_confluence(Zone z) =>
+    float s = 0.0
+    s += is_downtrend ? 1.0 : 0.0
+    s += mkt_structure == -1 ? 1.5 : mkt_structure == 0 ? 0.5 : 0.0
+    s += (use_mtf ? htf_bear : true) ? 1.0 : 0.0
+    s += (use_adx_filter ? is_trending : true) ? 0.5 : 0.0
+    s += session_ok ? 0.5 : 0.0
+    s += z.touch_count <= 1 ? 1.0 : z.touch_count == 2 ? 0.5 : 0.0
+    s += z.strength_score >= 1.0 ? 1.0 : z.strength_score * 1.0
+    s += bearish_pattern ? 1.5 : 0.0
+    s += bear_rsi_div ? 1.5 : 0.0
+    s += in_bear_fvg ? 1.0 : 0.0       // Bonus FVG
+    s += bear_sweep ? 1.0 : 0.0        // Bonus Liquidity Sweep
+    s += (use_vol_filter and vol_surge) ? 0.5 : 0.0
+    s
+
+score_label(float sc) =>
+    sc >= 7.0 ? "MẠNH ⭐⭐⭐" : sc >= 5.0 ? "TRUNG BÌNH ⭐⭐" : sc >= 4.0 ? "YẾU ⭐" : "—"
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  10) TRIGGER ENGINE                               ║
+// ╚═══════════════════════════════════════════════════╝
+
+if barstate.isconfirmed and array.size(active_zones) > 0
+    for i = array.size(active_zones) - 1 to 0
+        z = array.get(active_zones, i)
+        box.set_right(z.box_id, time)
+
+        if is_zone_new_touch(z)
+            z.touch_count += 1
+            decay = z.touch_count > 2 ? 0.25 : 0.15
+            z.strength_score := math.max(0.0, z.strength_score - decay)
+
+        if is_zone_broken(z)
+            z.is_active := false
+            fade_zone(z)
+            array.remove(active_zones, i)
+        else
+            if not z.is_triggered
+                // BUY CHECK
+                is_in_demand = z.zone_type == 1 and is_zone_touched(z)
+                touch_ok     = first_touch_only ? z.touch_count <= 1 : true
+                b_score      = buy_confluence(z)
+                adx_ok       = use_adx_filter ? not is_choppy : true
+                buy_ok       = is_in_demand and touch_ok and (bullish_pattern or bull_sweep or in_bull_fvg) and b_score >= min_score and adx_ok
+
+                if buy_ok
+                    z.is_triggered := true
+                    buy_signal     := true
+
+                    buy_sl  = close - atr_val * sl_atr_mult
+                    buy_tp1 = close + (close - buy_sl) * rr_ratio_1
+                    buy_tp2 = close + (close - buy_sl) * rr_ratio_2
+
+                    risk_amt = account_bal * (risk_pct / 100.0)
+                    dist     = math.abs(close - buy_sl)
+                    units    = dist > 0 ? (is_forex ? (risk_amt / (dist * 100000)) : (risk_amt / dist)) : 0.0
+                    u_label  = is_forex ? "Lot" : "Khối lượng"
+
+                    pattern_name = in_bull_fvg ? "Vùng Cầu + FVG" : bull_sweep ? "Quét Đáy Sweep" : get_bull_pattern_name()
+                    strength     = score_label(b_score)
+
+                    if label_signals
+                        txt = "MUA LÊN (" + strength + ")\n" + pattern_name + "\n" + u_label + ": " + str.tostring(units, "#.##") + "\nVào lệnh: " + str.tostring(close, format.mintick) + "\nĐiểm: " + str.tostring(b_score, "#.#") + "/10"
+                        label.new(bar_index, low, txt, color=color.new(color.green, 10), style=label.style_label_up, textcolor=color.white, size=size.small)
+
+                    if show_sl_tp
+                        line.new(bar_index, buy_sl,  bar_index + future_sessions, buy_sl,  color=color.new(color.red, 20),    width=1, style=line.style_dashed)
+                        line.new(bar_index, buy_tp1, bar_index + future_sessions, buy_tp1, color=color.new(color.orange, 20), width=1, style=line.style_dashed)
+                        line.new(bar_index, buy_tp2, bar_index + future_sessions, buy_tp2, color=color.new(color.green, 20),  width=1, style=line.style_dashed)
+                        label.new(bar_index + future_sessions, buy_sl,  "Cắt Lỗ "  + str.tostring(buy_sl,  format.mintick), color=color.new(color.red, 20),    style=label.style_label_left, textcolor=color.white, size=size.tiny)
+                        label.new(bar_index + future_sessions, buy_tp1, "Chốt 1 " + str.tostring(buy_tp1, format.mintick), color=color.new(color.orange, 20), style=label.style_label_left, textcolor=color.white, size=size.tiny)
+                        label.new(bar_index + future_sessions, buy_tp2, "Chốt 2 " + str.tostring(buy_tp2, format.mintick), color=color.new(color.green, 20),  style=label.style_label_left, textcolor=color.white, size=size.tiny)
+
+                // SELL CHECK
+                is_in_supply = z.zone_type == -1 and is_zone_touched(z)
+                touch_ok_s   = first_touch_only ? z.touch_count <= 1 : true
+                s_score      = sell_confluence(z)
+                adx_ok_s     = use_adx_filter ? not is_choppy : true
+                sell_ok      = is_in_supply and touch_ok_s and (bearish_pattern or bear_sweep or in_bear_fvg) and s_score >= min_score and adx_ok_s
+
+                if sell_ok
+                    z.is_triggered := true
+                    sell_signal    := true
+
+                    sell_sl  = close + atr_val * sl_atr_mult
+                    sell_tp1 = close - (sell_sl - close) * rr_ratio_1
+                    sell_tp2 = close - (sell_sl - close) * rr_ratio_2
+
+                    risk_amt = account_bal * (risk_pct / 100.0)
+                    dist     = math.abs(sell_sl - close)
+                    units    = dist > 0 ? (is_forex ? (risk_amt / (dist * 100000)) : (risk_amt / dist)) : 0.0
+                    u_label  = is_forex ? "Lot" : "Khối lượng"
+
+                    pattern_name = in_bear_fvg ? "Vùng Cung + FVG" : bear_sweep ? "Quét Đỉnh Sweep" : get_bear_pattern_name()
+                    strength     = score_label(s_score)
+
+                    if label_signals
+                        txt = "BÁN XUỐNG (" + strength + ")\n" + pattern_name + "\n" + u_label + ": " + str.tostring(units, "#.##") + "\nVào lệnh: " + str.tostring(close, format.mintick) + "\nĐiểm: " + str.tostring(s_score, "#.#") + "/10"
+                        label.new(bar_index, high, txt, color=color.new(color.red, 10), style=label.style_label_down, textcolor=color.white, size=size.small)
+
+                    if show_sl_tp
+                        line.new(bar_index, sell_sl,  bar_index + future_sessions, sell_sl,  color=color.new(color.red, 20),    width=1, style=line.style_dashed)
+                        line.new(bar_index, sell_tp1, bar_index + future_sessions, sell_tp1, color=color.new(color.orange, 20), width=1, style=line.style_dashed)
+                        line.new(bar_index, sell_tp2, bar_index + future_sessions, sell_tp2, color=color.new(color.green, 20),  width=1, style=line.style_dashed)
+                        label.new(bar_index + future_sessions, sell_sl,  "Cắt Lỗ "  + str.tostring(sell_sl,  format.mintick), color=color.new(color.red, 20),    style=label.style_label_left, textcolor=color.white, size=size.tiny)
+                        label.new(bar_index + future_sessions, sell_tp1, "Chốt 1 " + str.tostring(sell_tp1, format.mintick), color=color.new(color.orange, 20), style=label.style_label_left, textcolor=color.white, size=size.tiny)
+                        label.new(bar_index + future_sessions, sell_tp2, "Chốt 2 " + str.tostring(sell_tp2, format.mintick), color=color.new(color.green, 20),  style=label.style_label_left, textcolor=color.white, size=size.tiny)
+
+            array.set(active_zones, i, z)
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  11) WIN-RATE ENGINE                              ║
+// ╚═══════════════════════════════════════════════════╝
+if barstate.isconfirmed
+    if buy_signal
+        array.push(wr_bars,   bar_index)
+        array.push(wr_prices, close)
+        array.push(wr_sls,    close - atr_val * sl_atr_mult)
+        array.push(wr_dirs,   1)
+        array.push(wr_sl_hit, false)
+    else if sell_signal
+        array.push(wr_bars,   bar_index)
+        array.push(wr_prices, close)
+        array.push(wr_sls,    close + atr_val * sl_atr_mult)
+        array.push(wr_dirs,   -1)
+        array.push(wr_sl_hit, false)
+
+    if array.size(wr_bars) > 0
+        for j = array.size(wr_bars) - 1 to 0
+            sig_bar   = array.get(wr_bars, j)
+            sig_price = array.get(wr_prices, j)
+            sig_sl    = array.get(wr_sls, j)
+            sig_dir   = array.get(wr_dirs, j)
+            sl_already = array.get(wr_sl_hit, j)
+            bars_passed = bar_index - sig_bar
+
+            if bars_passed >= 1 and not sl_already
+                if sig_dir == 1 and low <= sig_sl
+                    array.set(wr_sl_hit, j, true)
+                if sig_dir == -1 and high >= sig_sl
+                    array.set(wr_sl_hit, j, true)
+
+            if bars_passed >= future_sessions
+                was_sl_hit = array.get(wr_sl_hit, j)
+                won = false
+                if not was_sl_hit
+                    won := sig_dir == 1 ? close > sig_price : close < sig_price
+
+                if sig_dir == 1
+                    buy_total := buy_total + 1
+                    buy_wins  := won ? buy_wins + 1 : buy_wins
+                else
+                    sell_total := sell_total + 1
+                    sell_wins  := won ? sell_wins + 1 : sell_wins
+
+                array.remove(wr_bars,   j)
+                array.remove(wr_prices, j)
+                array.remove(wr_sls,    j)
+                array.remove(wr_dirs,   j)
+                array.remove(wr_sl_hit, j)
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  12) VISUAL: TREND BACKGROUND                     ║
+// ╚═══════════════════════════════════════════════════╝
+bg_col = show_trend_bg ? (mkt_structure == 1 ? color.new(color.teal, 93) : mkt_structure == -1 ? color.new(color.red, 93) : na) : na
+bgcolor(bg_col, title="Màu Nền Xu Hướng")
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  13) ALERTS & WEBHOOK PAYLOAD                     ║
+// ╚═══════════════════════════════════════════════════╝
+alertcondition(buy_signal,  title="[1] Báo MUA (Vùng Cầu + SMC)",  message='{"action":"BUY","ticker":"{{ticker}}","time":"{{time}}","price":{{close}},"interval":"{{interval}}"}')
+alertcondition(sell_signal, title="[2] Báo BÁN (Vùng Cung + SMC)",  message='{"action":"SELL","ticker":"{{ticker}}","time":"{{time}}","price":{{close}},"interval":"{{interval}}"}')
+alertcondition(bull_sweep,  title="[3] Quét Thanh Khoản Đáy (Bull Sweep)", message='{"event":"BULL_SWEEP","ticker":"{{ticker}}","price":{{close}}}')
+alertcondition(bear_sweep,  title="[4] Quét Thanh Khoản Đỉnh (Bear Sweep)", message='{"event":"BEAR_SWEEP","ticker":"{{ticker}}","price":{{close}}}')
+alertcondition(choch_bull,  title="[5] Đảo chiều sang TĂNG (ChoCH↑)",   message='{"event":"CHOCH_BULL","ticker":"{{ticker}}","price":{{close}}}')
+alertcondition(choch_bear,  title="[6] Đảo chiều sang GIẢM (ChoCH↓)",   message='{"event":"CHOCH_BEAR","ticker":"{{ticker}}","price":{{close}}}')
+alertcondition(bb_squeeze,  title="[7] Bollinger Siết Chặt",      message='{"event":"BB_SQUEEZE","ticker":"{{ticker}}","price":{{close}}}')
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  14) DASHBOARD 3 CỘT NÂNG CẤP V5.5                ║
+// ╚═══════════════════════════════════════════════════╝
+total_rows = 1 + (dash_show_session ? 1 : 0) + (dash_show_adx ? 1 : 0) + (dash_show_htf ? 1 : 0) + (dash_show_ema ? 1 : 0) + (dash_show_struct ? 1 : 0) + (dash_show_rsi ? 1 : 0) + (dash_show_div ? 1 : 0) + (dash_show_bb ? 1 : 0) + (dash_show_vol ? 1 : 0) + (dash_show_fvg ? 1 : 0) + (dash_show_zones ? 1 : 0) + (dash_show_wr ? 1 : 0)
+var table dash = table.new(position.top_right, dash_notes ? 3 : 2, total_rows, border_width=1, border_color=color.gray)
+
+if barstate.islast and show_dashboard and total_rows > 1
+    c_head = color.new(color.black, 0)
+    c_txt  = color.white
+    c_note = color.new(color.gray, 10)
+
+    table.cell(dash, 0, 0, "THÔNG SỐ V5.5", bgcolor=c_head, text_color=c_txt)
+    table.cell(dash, 1, 0, "HIỆN TẠI", bgcolor=c_head, text_color=c_txt)
+    if dash_notes
+        table.cell(dash, 2, 0, "Ý NGHĨA", bgcolor=c_head, text_color=color.white)
+
+    int r = 1
+
+    // Row 1: Session
+    if dash_show_session
+        sess_str = not timeframe.isintraday ? "Bỏ Qua" : (in_london and in_ny ? "London+NY ✓" : in_london ? "London ✓" : in_ny ? "New York ✓" : "Ngoài Phiên ✗")
+        sess_col = not timeframe.isintraday ? color.new(color.gray, 50) : (in_session ? color.new(color.green, 20) : color.new(color.gray, 50))
+        table.cell(dash, 0, r, "1. Phiên Giao Dịch", bgcolor=c_head, text_color=c_txt)
+        table.cell(dash, 1, r, sess_str,              bgcolor=sess_col, text_color=c_txt)
+        if dash_notes
+            table.cell(dash, 2, r, "Giao dịch lúc thanh khoản cao nhất", bgcolor=c_note, text_color=color.white, text_size=size.small)
+        r := r + 1
+
+    // Row 2: ADX Regime
+    if dash_show_adx
+        adx_str = is_trending ? "🔥 XU HƯỚNG MẠNH (" + str.tostring(math.round(adx_value, 1)) + ")" : "💤 ĐI NGANG/CHOP (" + str.tostring(math.round(adx_value, 1)) + ")"
+        adx_col = is_trending ? color.new(color.green, 20) : color.new(color.orange, 20)
+        table.cell(dash, 0, r, "2. Độ Mạnh Xu Hướng (ADX)", bgcolor=c_head, text_color=c_txt)
+        table.cell(dash, 1, r, adx_str,                     bgcolor=adx_col, text_color=c_txt)
+        if dash_notes
+            table.cell(dash, 2, r, "> 20: Trend mạnh | < 20: Đi ngang", bgcolor=c_note, text_color=color.white, text_size=size.small)
+        r := r + 1
+
+    // Row 3: HTF Trend
+    if dash_show_htf
+        htf_str = htf_bull ? "▲ TĂNG (" + actual_htf + ")" : htf_bear ? "▼ GIẢM (" + actual_htf + ")" : "—"
+        htf_col = htf_bull ? color.new(color.green, 20) : htf_bear ? color.new(color.red, 20) : color.gray
+        table.cell(dash, 0, r, "3. Xu Hướng Khung Lớn", bgcolor=c_head, text_color=c_txt)
+        table.cell(dash, 1, r, htf_str,                 bgcolor=htf_col, text_color=c_txt)
+        if dash_notes
+            table.cell(dash, 2, r, "Định hướng chính từ khung thời gian lớn hơn", bgcolor=c_note, text_color=color.white, text_size=size.small)
+        r := r + 1
+
+    // Row 4: EMA Regime
+    if dash_show_ema
+        regime_str = is_uptrend ? "▲ TRÊN EMA" : is_downtrend ? "▼ DƯỚI EMA" : "— TRÙNG LÊN"
+        regime_col = is_uptrend ? color.new(color.green, 20) : is_downtrend ? color.new(color.red, 20) : color.gray
+        table.cell(dash, 0, r, "4. Mức Giá vs EMA", bgcolor=c_head, text_color=c_txt)
+        table.cell(dash, 1, r, regime_str,           bgcolor=regime_col, text_color=c_txt)
+        if dash_notes
+            table.cell(dash, 2, r, "Trên EMA ưu tiên Mua, Dưới ưu tiên Bán", bgcolor=c_note, text_color=color.white, text_size=size.small)
+        r := r + 1
+
+    // Row 5: Market Structure
+    if dash_show_struct
+        struct_str = mkt_structure == 1 ? "▲ Cấu trúc TĂNG" : mkt_structure == -1 ? "▼ Cấu trúc GIẢM" : "— Chưa rõ"
+        struct_col = mkt_structure == 1 ? color.new(color.teal, 20) : mkt_structure == -1 ? color.new(color.red, 20) : color.gray
+        table.cell(dash, 0, r, "5. Cấu Trúc (SMC)", bgcolor=c_head, text_color=c_txt)
+        table.cell(dash, 1, r, struct_str,          bgcolor=struct_col, text_color=c_txt)
+        if dash_notes
+            table.cell(dash, 2, r, "Xu hướng tạo đỉnh/đáy mới (BOS/ChoCH)", bgcolor=c_note, text_color=color.white, text_size=size.small)
+        r := r + 1
+
+    // Row 6: RSI
+    if dash_show_rsi
+        rsi_str = rsi_val <= 30 ? "Quá Bán (" + str.tostring(math.round(rsi_val, 1)) + ")" : rsi_val >= 70 ? "Quá Mua (" + str.tostring(math.round(rsi_val, 1)) + ")" : str.tostring(math.round(rsi_val, 1))
+        rsi_col = rsi_val <= 30 ? color.new(color.green, 20) : rsi_val >= 70 ? color.new(color.red, 20) : color.new(color.gray, 40)
+        table.cell(dash, 0, r, "6. Chỉ báo RSI", bgcolor=c_head, text_color=c_txt)
+        table.cell(dash, 1, r, rsi_str,           bgcolor=rsi_col, text_color=c_txt)
+        if dash_notes
+            table.cell(dash, 2, r, "< 30: Chờ Mua | > 70: Chờ Bán", bgcolor=c_note, text_color=color.white, text_size=size.small)
+        r := r + 1
+
+    // Row 7: RSI Divergence
+    if dash_show_div
+        div_str = bull_rsi_div ? "▲ Phân Kỳ TĂNG" : bear_rsi_div ? "▼ Phân Kỳ GIẢM" : "Không có"
+        div_col = bull_rsi_div ? color.new(color.green, 20) : bear_rsi_div ? color.new(color.red, 20) : color.new(color.gray, 50)
+        table.cell(dash, 0, r, "7. RSI Phân Kỳ", bgcolor=c_head, text_color=c_txt)
+        table.cell(dash, 1, r, div_str,          bgcolor=div_col, text_color=c_txt)
+        if dash_notes
+            table.cell(dash, 2, r, "Dấu hiệu đảo chiều cực kỳ quan trọng", bgcolor=c_note, text_color=color.white, text_size=size.small)
+        r := r + 1
+
+    // Row 8: BB Position
+    if dash_show_bb
+        bb_str = bb_squeeze ? "⚡ ĐANG SIẾT CHẶT" : bb_pct <= 20 ? "Đáy BB (" + str.tostring(math.round(bb_pct, 0)) + "%)" : bb_pct >= 80 ? "Đỉnh BB (" + str.tostring(math.round(bb_pct, 0)) + "%)" : str.tostring(math.round(bb_pct, 0)) + "%"
+        bb_col = bb_squeeze ? color.new(color.yellow, 10) : bb_pct <= 20 ? color.new(color.green, 20) : bb_pct >= 80 ? color.new(color.red, 20) : color.new(color.gray, 40)
+        table.cell(dash, 0, r, "8. Bollinger Bands", bgcolor=c_head, text_color=c_txt)
+        table.cell(dash, 1, r, bb_str,              bgcolor=bb_col, text_color=c_txt)
+        if dash_notes
+            table.cell(dash, 2, r, "Siết chặt = Sắp bùng nổ giá", bgcolor=c_note, text_color=color.white, text_size=size.small)
+        r := r + 1
+
+    // Row 9: Volume
+    if dash_show_vol
+        vol_ratio = vol_ma > 0 ? volume / vol_ma : 0.0
+        vol_str   = str.tostring(math.round(vol_ratio * 100) / 100, "#.##") + "x Trung bình" + (vol_surge ? " 🔥" : "")
+        vol_col   = vol_surge ? color.new(color.green, 20) : color.new(color.gray, 40)
+        table.cell(dash, 0, r, "9. Khối lượng (Vol)", bgcolor=c_head, text_color=c_txt)
+        table.cell(dash, 1, r, vol_str,               bgcolor=vol_col, text_color=c_txt)
+        if dash_notes
+            table.cell(dash, 2, r, "Xác nhận lực đẩy thực sự", bgcolor=c_note, text_color=color.white, text_size=size.small)
+        r := r + 1
+
+    // Row 10: FVG
+    if dash_show_fvg
+        fvg_str = in_bull_fvg ? "🟢 Vùng FVG TĂNG" : in_bear_fvg ? "🔴 Vùng FVG GIẢM" : str.tostring(array.size(active_fvgs)) + " vùng chờ"
+        fvg_col = in_bull_fvg ? color.new(color.green, 20) : in_bear_fvg ? color.new(color.red, 20) : color.new(color.gray, 40)
+        table.cell(dash, 0, r, "10. Khoảng Trống (FVG)", bgcolor=c_head, text_color=c_txt)
+        table.cell(dash, 1, r, fvg_str,                  bgcolor=fvg_col, text_color=c_txt)
+        if dash_notes
+            table.cell(dash, 2, r, "Vùng mất cân bằng giá chưa lấp", bgcolor=c_note, text_color=color.white, text_size=size.small)
+        r := r + 1
+
+    // Row 11: Active Zones
+    if dash_show_zones
+        table.cell(dash, 0, r, "11. Vùng Cản Chờ Sẵn", bgcolor=c_head, text_color=c_txt)
+        table.cell(dash, 1, r, str.tostring(array.size(active_zones)), bgcolor=color.new(color.blue, 30), text_color=c_txt)
+        if dash_notes
+            table.cell(dash, 2, r, "Số vùng Cung/Cầu có thể trade", bgcolor=c_note, text_color=color.white, text_size=size.small)
+        r := r + 1
+
+    // Row 12: Win-Rate
+    if dash_show_wr
+        total_t = buy_total + sell_total
+        total_w = buy_wins + sell_wins
+        wr_pct  = total_t >= winrate_min_samples ? math.round((total_w / total_t) * 100) : -1
+        wr_str  = wr_pct >= 0 ? str.tostring(wr_pct) + "% (" + str.tostring(total_w) + "/" + str.tostring(total_t) + ")" : "Đang chờ dữ liệu..."
+        wr_col  = wr_pct >= 60 ? color.new(color.lime, 20) : wr_pct >= 45 ? color.new(color.yellow, 20) : wr_pct >= 0 ? color.new(color.red, 20) : color.gray
+        table.cell(dash, 0, r, "12. Lịch Sử Thắng", bgcolor=c_head, text_color=c_txt)
+        table.cell(dash, 1, r, wr_str,              bgcolor=wr_col, text_color=color.white)
+        if dash_notes
+            table.cell(dash, 2, r, "Đo tỷ lệ chạm TP trước SL", bgcolor=c_note, text_color=color.white, text_size=size.small)
+        r := r + 1
+
+// ╔═══════════════════════════════════════════════════╗
+// ║  15) PROBABILITY ASSESSMENT (BẢNG XÁC SUẤT)       ║
+// ╚═══════════════════════════════════════════════════╝
+var table prob_table = table.new(position.bottom_right, 2, 5, border_width=1)
+
+if barstate.islast and show_prob_table
+    float bull_prob = 50.0
+    float bear_prob = 50.0
+
+    bull_prob += is_uptrend ? 5.0 : -5.0
+    bull_prob += mkt_structure == 1 ? 8.0 : mkt_structure == -1 ? -8.0 : 0.0
+    bull_prob += (use_mtf and htf_bull) ? 5.0 : (use_mtf and htf_bear) ? -5.0 : 0.0
+    bull_prob += (use_adx_filter and is_trending) ? (is_uptrend ? 4.0 : -4.0) : 0.0
+    bull_prob += bull_rsi_div ? 6.0 : bear_rsi_div ? -6.0 : 0.0
+    bull_prob += choch_bull ? 7.0 : choch_bear ? -7.0 : 0.0
+    bull_prob += bull_sweep ? 5.0 : bear_sweep ? -5.0 : 0.0
+    bull_prob += in_bull_fvg ? 4.0 : in_bear_fvg ? -4.0 : 0.0
+    bull_prob += bb_pct <= 15 ? 4.0 : bb_pct >= 85 ? -4.0 : 0.0
+    bull_prob += rsi_val <= 25 ? 3.0 : rsi_val >= 75 ? -3.0 : 0.0
+
+    total_tr = buy_total + sell_total
+    total_wr = buy_wins + sell_wins
+    if total_tr >= winrate_min_samples
+        hist_wr = total_wr / total_tr * 100
+        bull_prob += (hist_wr - 50) * 0.15
+
+    bull_prob := math.min(88.0, math.max(12.0, bull_prob))
+    bear_prob := 100.0 - bull_prob
+
+    strength_str = math.abs(bull_prob - 50) >= 20 ? "MẠNH (STRONG)" : math.abs(bull_prob - 50) >= 10 ? "TRUNG BÌNH (MEDIUM)" : "YẾU (WEAK)"
+    direction_str = bull_prob > 55 ? "▲ ƯU TIÊN TĂNG" : bull_prob < 45 ? "▼ ƯU TIÊN GIẢM" : "↔ ĐI NGANG"
+    dir_col = bull_prob > 55 ? color.new(color.green, 15) : bull_prob < 45 ? color.new(color.red, 15) : color.new(color.gray, 20)
+
+    table.cell(prob_table, 0, 0, "📊 BẢNG DỰ BÁO XÁC SUẤT V5.5", bgcolor=color.new(color.black, 0), text_color=color.white)
+    table.cell(prob_table, 1, 0, str.tostring(future_sessions) + " nến tới",  bgcolor=color.new(color.black, 0), text_color=color.gray)
+
+    table.cell(prob_table, 0, 1, "Kịch bản ưu tiên",   bgcolor=color.new(color.black, 0), text_color=color.white)
+    table.cell(prob_table, 1, 1, direction_str,         bgcolor=dir_col, text_color=color.white)
+
+    table.cell(prob_table, 0, 2, "Tỉ lệ TĂNG",         bgcolor=color.new(color.black, 0), text_color=color.white)
+    table.cell(prob_table, 1, 2, str.tostring(math.round(bull_prob)) + "%", bgcolor=bull_prob > 55 ? color.new(color.green, 25) : color.new(color.gray, 40), text_color=color.white)
+
+    table.cell(prob_table, 0, 3, "Tỉ lệ GIẢM",         bgcolor=color.new(color.black, 0), text_color=color.white)
+    table.cell(prob_table, 1, 3, str.tostring(math.round(bear_prob)) + "%", bgcolor=bear_prob > 55 ? color.new(color.red, 25) : color.new(color.gray, 40), text_color=color.white)
+
+    table.cell(prob_table, 0, 4, "Mức độ tin cậy",     bgcolor=color.new(color.black, 0), text_color=color.white)
+    strength_col = math.abs(bull_prob - 50) >= 20 ? color.new(color.lime, 15) : math.abs(bull_prob - 50) >= 10 ? color.new(color.yellow, 20) : color.new(color.gray, 30)
+    table.cell(prob_table, 1, 4, strength_str,          bgcolor=strength_col, text_color=color.black)

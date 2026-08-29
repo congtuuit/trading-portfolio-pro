@@ -5,12 +5,27 @@
 
 import { fetchPricesMap } from "./price.js";
 import { calculatePnL } from "./pnl.js";
-import { getDivisor, escapeHTML, calculateT0Scenario } from "./utils.js";
+import { getDivisor, escapeHTML, calculateT0Scenario, parseMarkdown, calculatePositionSize, calculateProbability, detectCandlePattern, getSector, calculateSectorAllocation } from "./utils.js";
 import { suggestEntryExit, calculateFibLevels } from "./analysis.js";
+
+
 
 /** Format a number to 2 decimal places with thousands separators */
 function fmt(n) {
   return Number(n).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+/** Format price according to its scale (supporting crypto and tiny decimal values) */
+function fmtPrice(n) {
+  const num = Number(n);
+  if (isNaN(num)) return "0.00";
+  if (num === 0) return "0.00";
+  if (num < 0.0001) return num.toFixed(8);
+  if (num < 0.01) return num.toFixed(6);
+  if (num < 1) return num.toFixed(4);
+  return num.toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -200,7 +215,12 @@ export function bindAIPortfolio(onAskPortfolio, root = document) {
 export function openChatPanel(root = document) {
   root.querySelector("#panel-chat").classList.add("open");
   const msgContainer = root.querySelector("#chat-messages");
-  msgContainer.scrollTop = msgContainer.scrollHeight;
+  if (msgContainer) msgContainer.scrollTop = msgContainer.scrollHeight;
+  const inpChat = root.querySelector("#inp-chat");
+  if (inpChat) {
+    inpChat.focus();
+    setTimeout(() => inpChat.focus(), 100);
+  }
 }
 
 export function closeChatPanel(root = document) {
@@ -228,10 +248,9 @@ export function bindTabEvents(root = document) {
   });
 }
 
-export function bindScannerEvents(onScan, onAIAnalyze, onAskAdvisor, onViewRaw, root = document) {
+export function bindScannerEvents(onScan, onAIAnalyze, onAskAdvisor, root = document) {
   const btnScan = root.querySelector("#btn-scan-market");
-  const inpTarget = root.querySelector("#inp-target-profit");
-  
+
   if (btnScan) {
     btnScan.addEventListener("click", async () => {
       btnScan.disabled = true;
@@ -246,12 +265,11 @@ export function bindScannerEvents(onScan, onAIAnalyze, onAskAdvisor, onViewRaw, 
   const btnAI = root.querySelector("#btn-ai-analyze");
   if (btnAI) {
     btnAI.addEventListener("click", async () => {
-      const targetProfit = parseFloat(inpTarget.value) || 3;
       btnAI.disabled = true;
       const originalText = btnAI.textContent;
       btnAI.textContent = "⏳ Đang lọc AI...";
       try {
-        await onAIAnalyze(targetProfit);
+        await onAIAnalyze();
       } finally {
         btnAI.disabled = false;
         btnAI.textContent = originalText;
@@ -281,21 +299,15 @@ export function bindScannerEvents(onScan, onAIAnalyze, onAskAdvisor, onViewRaw, 
         return;
       }
 
-      // 2. Nếu bấm vào nút Raw
-      if (e.target.closest(".btn-view-raw")) {
-        e.stopPropagation();
-        const rawData = JSON.parse(card.dataset.raw || "{}");
-        onViewRaw(symbol, rawData);
-        return;
-      }
-
-      // 3. Mặc định là xem tư vấn AI (Khi click vào các vùng khác của thẻ)
+      // Mặc định là xem tư vấn AI (Khi click vào các vùng khác của thẻ)
       onAskAdvisor(symbol);
     });
   }
 }
 
-export function renderScannerResults(results, root = document, timestamp = null, containerId = "#scanner-raw-results") {
+const gradeColor = (grade) => grade === 'A' ? '#00e676' : grade === 'B' ? '#4caf50' : grade === 'C' ? '#ff9800' : grade === 'D' ? '#f44336' : '#9e9e9e';
+
+export function renderScannerResults(results, root = document, timestamp = null, containerId = "#scanner-raw-results", settings = {}) {
   const container = root.querySelector(containerId);
   if (!container) return;
 
@@ -312,94 +324,143 @@ export function renderScannerResults(results, root = document, timestamp = null,
   }
 
   const isAIList = containerId === "#scanner-ai-results";
+  const accountBal = settings.accountBalance || 100000000;
+  const riskPct = settings.riskPercent || 2.0;
 
   html += results.map(res => {
     const ticker = res.ticker || res.symbol || res.s;
     const displayTicker = res.s || (res.symbol && res.symbol.includes(':') ? res.symbol.split(':')[1] : res.symbol) || ticker;
     const tvUrl = `https://vn.tradingview.com/chart/?symbol=${ticker}`;
+    const isCrypto = res.type === "crypto" || res.subtype === "crypto";
+
+    // Format Volume
+    const volVal = res.volume;
+    let volStr = "0";
+    if (volVal >= 1000000) {
+      volStr = (volVal / 1000000).toFixed(1) + "M";
+    } else if (volVal >= 1000) {
+      volStr = (volVal / 1000).toFixed(0) + "K";
+    } else if (volVal) {
+      volStr = volVal.toString();
+    }
+
+    // Format Volume Ratio
+    const volRatio = res.volume && res.avgVolume10d ? (res.volume / res.avgVolume10d) : 1;
+    const ratioStr = volRatio > 1.05 || volRatio < 0.95 ? `x${volRatio.toFixed(1)}` : "";
+
+    // Pine Script V5.5 Analytics
+    const prob = res._probability || calculateProbability(res);
+    const pattern = res._pattern || detectCandlePattern(res);
+    const confluence = res._confluence !== undefined ? res._confluence : 7.0;
+
+    // Position Sizing for AI Card
+    let posSize = null;
+    if (isAIList && res.aiEntry && res.aiStoploss) {
+      posSize = calculatePositionSize(res.aiEntry, res.aiStoploss, accountBal, riskPct, isCrypto);
+    }
 
     return `
       <div class="scanner-card ${isAIList ? 'ai-card' : ''}" data-symbol="${ticker}" data-raw='${JSON.stringify(res).replace(/'/g, "&apos;")}'>
-        <div class="scanner-main">
-          <div style="display:flex; align-items:center; gap:6px;">
-            <a href="${tvUrl}" target="_self" class="ticker-link" title="Xem biểu đồ TradingView (tab hiện tại)">
+        <!-- Row 1: Header (Symbol, Name, Rating badges) -->
+        <div class="scanner-header">
+          <div class="scanner-symbol-group">
+            <a href="${tvUrl}" target="_self" class="ticker-link" data-tooltip="Xem biểu đồ TradingView (tab hiện tại)">
               <span class="scanner-ticker">${displayTicker}</span>
               <span style="font-size:11px;">📈</span>
             </a>
-          <span class="scanner-name">${res.description || res.name}</span>
-        </div>
-        <div class="scanner-price-info">
-          <div class="scanner-price">${fmt(res.price)}</div>
-          <div class="scanner-change ${res.changePercent >= 0 ? 'profit' : 'loss'}">
-            ${fmtSigned(res.changePercent)}%
+            <span class="scanner-name" title="${res.description || res.name || ''}">${res.description || res.name || ''}</span>
+          </div>
+          <div class="scanner-rating-group">
+            ${confluence ? `<span class="tech-badge" style="background:rgba(142,36,170,0.2); border-color:#8e24aa; color:#e1bee7; font-size:10px; font-weight:bold;" data-tooltip="Điểm Đồng Thuận SMC 3 Lớp (0-10đ)">⚡ ${confluence}/10</span>` : ''}
+            ${res._score ? `<span class="scanner-score" data-tooltip="Điểm số kỹ thuật: ${res._score}/100">${res._score}/100</span>` : ''}
+            ${res._grade ? `<span class="scanner-grade-badge" style="background:${gradeColor(res._grade)};" data-tooltip="Xếp hạng: ${res._grade}">${res._grade}</span>` : ''}
           </div>
         </div>
-      </div>
+
+        <!-- Row 2: Price, Change, and Technical Indicators -->
+        <div class="scanner-row scanner-price-row">
+          <div class="scanner-price-group">
+            <span class="scanner-price">${fmtPrice(res.price)}</span>
+            <span class="scanner-change-badge ${res.changePercent >= 0 ? 'profit' : 'loss'}">
+              ${fmtSigned(res.changePercent)}%
+            </span>
+          </div>
+          <div class="scanner-tech-group">
+            ${pattern ? `<span class="tech-badge" style="background:rgba(38,166,154,0.15); border-color:rgba(38,166,154,0.4); color:var(--text-primary); font-size:10px;" data-tooltip="Nhận diện Price Action">${pattern.icon} ${pattern.label}</span>` : ''}
+            <span class="tech-badge" data-tooltip="Chỉ số RSI (14 phiên)">RSI: <strong>${Math.round(res.rsi || 50)}</strong></span>
+            <span class="tech-badge" data-tooltip="Khối lượng giao dịch & tỷ lệ so với trung bình 10 ngày">Vol: <strong>${volStr}</strong>${ratioStr ? `<span class="vol-ratio">${ratioStr}</span>` : ''}</span>
+          </div>
+        </div>
+
+        <!-- Row 2.5: Probability Assessment Bar (Pine Script V5.5 Engine) -->
+        ${prob ? `
+        <div class="prob-wrapper" style="margin: 6px 0 8px; background:rgba(0,0,0,0.2); padding:6px 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.06);" data-tooltip="Bảng dự báo xác suất xu hướng (SMC V5.5 Engine)">
+          <div style="display:flex; justify-content:space-between; font-size:10px; margin-bottom:3px;">
+            <span>Dự báo: <strong style="color:${prob.dirColor}; font-weight:bold;">${prob.direction}</strong></span>
+            <span style="color:var(--text-muted);">Độ tin cậy: <strong style="color:#fff;">${prob.strength}</strong></span>
+          </div>
+          <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:#334155;">
+            <div style="width:${prob.bullProb}%; background:linear-gradient(90deg, #059669, #10b981); transition:width 0.3s;"></div>
+            <div style="width:${prob.bearProb}%; background:linear-gradient(90deg, #ef4444, #dc2626); transition:width 0.3s;"></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:9px; color:var(--text-muted); margin-top:2px;">
+            <span style="color:#34d399;">Tăng ${prob.bullProb}%</span>
+            <span style="color:#f87171;">Giảm ${prob.bearProb}%</span>
+          </div>
+        </div>` : ''}
+
+        <!-- Row 3: Holding Expectations & Breakout Projections -->
+        ${res._winRate ? `
+        <div class="scanner-row scanner-strategy-row">
+          <span class="strategy-badge" data-tooltip="Xác suất thắng dự kiến">🎯 Win Rate: <strong style="color:var(--profit);">${res._winRate}%</strong></span>
+          <span class="strategy-badge" data-tooltip="Thời gian nắm giữ kỳ vọng">📅 Kỳ vọng: <strong>${res._sessions}</strong></span>
+          ${res._breakoutDist !== undefined ? `
+          <span class="strategy-badge" data-tooltip="Khoảng cách tới kháng cự / điểm breakout">📊 Breakout: <strong style="color:${res._breakingOut ? 'var(--profit)' : res._nearResistance ? '#f1c40f' : 'var(--text-muted)'};">${res._breakoutDist}%</strong></span>
+          ` : ''}
+        </div>` : ''}
+
+        <!-- Row 4: Detailed Rating Explanation -->
+        ${res._gradeLabel ? `
+        <div class="scanner-desc-box" style="border-left-color: ${gradeColor(res._grade)}">
+          <strong>${res._grade}:</strong> ${res._gradeLabel}
+        </div>` : ''}
+
+        <!-- AI Plan section (Only for AI advisor list) -->
         ${isAIList ? `
-          <div class="ai-reason">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <span>🤖 <strong>AI:</strong></span>
-          ${res.aiScore ? `<span style="background:${res.aiScore >= 8 ? 'var(--profit)' : 'var(--warning, #f1c40f)'}; color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:bold;">An toàn: ${res.aiScore}/10</span>` : ''}
-        </div>
-        <div style="font-size:11px; margin-bottom:8px; line-height:1.4; color:var(--text-primary); opacity:0.9;">
-          ${res.aiReason}
-        </div>
-        
-        <!-- Bảng kế hoạch giao dịch chi tiết -->
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; background:rgba(255,255,255,0.05); padding:8px; border-radius:6px; border:1px dashed rgba(255,255,255,0.1);">
-          <div style="font-size:10px;">📥 Vào (Entry): <strong style="color:var(--text-primary);">${res.aiEntry || 'N/A'}</strong></div>
-          <div style="font-size:10px;">⏳ Giữ: <strong style="color:var(--warning, #f1c40f);">${res.aiDuration || 0} phiên</strong></div>
-          <div style="font-size:10px;">🎯 Target: <strong style="color:var(--profit);">${res.aiTarget || 'N/A'}</strong></div>
-          <div style="font-size:10px;">🛡️ Cắt lỗ: <strong style="color:var(--loss);">${res.aiStoploss || 'N/A'}</strong></div>
-          <div style="font-size:10px; grid-column: span 2; border-top: 1px solid rgba(255,255,255,0.05); padding-top:4px; margin-top:2px;">
-            🔥 Xác suất thắng: <strong style="color:#00e676;">${res.aiWinRate || 0}%</strong>
+        <div class="ai-reason" style="margin-top: 8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span>🤖 <strong>AI Phân Tích:</strong></span>
+            ${res.aiScore ? `<span style="background:${res.aiScore >= 8 ? 'var(--profit)' : 'var(--warning, #f1c40f)'}; color:white; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:bold;">Độ an toàn: ${res.aiScore}/10</span>` : ''}
           </div>
-        </div>
-      </div>
-      <div class="scanner-stats">
-        <div style="display:flex; gap:12px;">
-          <span>RSI: <span class="stat-val">${Math.round(res.rsi)}</span></span>
-          <span>Vol: <span class="stat-val">${(res.volume / 1000000).toFixed(1)}M</span></span>
-        </div>
-        <button class="btn-view-raw" style="background:var(--bg-input); border:1px solid var(--border); color:var(--text-muted); font-size:10px; padding:2px 6px; border-radius:4px;">Raw 📄</button>
+          <div style="font-size:11px; margin-bottom:8px; line-height:1.4; color:var(--text-primary); opacity:0.9;">
+            ${parseMarkdown(res.aiReason || '')}
           </div>
+
+          <!-- Bảng kế hoạch giao dịch chi tiết -->
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; background:rgba(255,255,255,0.02); padding:8px; border-radius:6px; border:1px solid var(--border);">
+            <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--accent-blue);">📥 Vào: <strong style="color:var(--text-primary);">${res.aiEntry || 'N/A'}</strong></div>
+            <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--warning, #f1c40f);">⏳ Giữ: <strong style="color:var(--warning, #f1c40f);">${res.aiDuration || 0} ${isCrypto ? 'ngày' : 'phiên'}</strong></div>
+            <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--profit);">🎯 Target: <strong style="color:var(--profit);">${res.aiTarget || 'N/A'}</strong></div>
+            <div style="font-size:10px; background:rgba(255,255,255,0.03); padding:4px 6px; border-radius:4px; border-top:2px solid var(--loss);">🛡️ Cắt lỗ: <strong style="color:var(--loss);">${res.aiStoploss || 'N/A'}</strong></div>
+            <div style="font-size:10px; grid-column: span 2; border-top: 1px solid rgba(255,255,255,0.05); padding-top:4px; margin-top:2px; display:flex; justify-content:space-between; align-items:center;">
+              <span>🔥 Xác suất thắng: <strong style="color:#00e676;">${res.aiWinRate || 0}%</strong></span>
+              ${res.aiRR ? `<span style="background:${res.aiRR >= 2 ? 'var(--profit)' : (res.aiRR >= 1.5 ? 'var(--warning, #f1c40f)' : 'var(--loss)')}; color:white; padding:2px 6px; border-radius:4px; font-weight:bold; font-size:9px;">R:R = 1:${res.aiRR}</span>` : ''}
+            </div>
+          </div>
+
+          <!-- Position Sizing Suggestion Box -->
+          ${posSize && posSize.units > 0 ? `
+          <div style="margin-top:6px; background:rgba(33,150,243,0.08); border:1px dashed var(--accent-blue); padding:6px 8px; border-radius:6px; font-size:10px; display:flex; justify-content:space-between; align-items:center;">
+            <span>🛡️ Khối lượng đi lệnh tối ưu: <strong style="color:var(--accent-blue); font-size:11px;">${posSize.units.toLocaleString()} ${isCrypto ? 'Coin' : 'CP'}</strong></span>
+            <span style="color:var(--text-muted);">(Rủi ro: ${posSize.riskAmount.toLocaleString()} ${isCrypto ? 'USDT' : 'đ'})</span>
+          </div>` : ''}
+        </div>
         ` : ''}
       </div>
     `;
   }).join("");
 
   container.innerHTML = html;
-}
-
-export function renderSystemLogs(logs, root = document) {
-  const container = root.querySelector("#log-list");
-  if (!container) return;
-
-  if (!logs || logs.length === 0) {
-    container.innerHTML = `<div class="empty-state">Chưa có hoạt động nào được ghi lại.</div>`;
-    return;
-  }
-
-  container.innerHTML = logs.map(log => {
-    const time = new Date(log.time).toLocaleTimeString();
-    let typeColor = "var(--text-muted)";
-    if (log.type === 'ERROR') typeColor = "var(--loss)";
-    if (log.type === 'AI_RES') typeColor = "var(--profit)";
-    if (log.type === 'AI_PROMPT') typeColor = "var(--accent-blue)";
-
-    return `
-      <div class="log-item" style="background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:10px; font-size:11px;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-          <span style="color:${typeColor}; font-weight:bold;">[${log.type}] ${log.title}</span>
-          <span style="color:var(--text-muted);">${time}</span>
-        </div>
-        <details>
-          <summary style="cursor:pointer; color:var(--accent-blue);">Xem chi tiết</summary>
-          <div class="log-detail" style="margin-top:8px; padding:8px; background:rgba(0,0,0,0.2); border-radius:4px; font-size:11px; white-space:pre-wrap; word-break:break-all; max-height:400px; overflow-y:auto;">${log.detail}</div>
-        </details>
-      </div>
-    `;
-  }).join("");
 }
 
 export function appendChatMessage(role, text, isHtml = false, root = document) {
@@ -441,9 +502,8 @@ export function renderChatHistory(history, root = document) {
       let formattedText = msg.text;
       let isHtml = false;
       
-      if (msg.role === "assistant") {
-        const escaped = escapeHTML(msg.text);
-        formattedText = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      if (msg.role === "assistant" || msg.role === "system") {
+        formattedText = parseMarkdown(msg.text);
         isHtml = true;
       }
       
@@ -469,21 +529,130 @@ export function bindChatEvents(onSendChat, onClearChat, root = document) {
         onClearChat();
         root.querySelector("#chat-messages").innerHTML = `
           <div class="chat-msg ai-msg">
-            Đã xóa lịch sử trò chuyện. Tôi có thể giúp gì cho bạn?
+            Đã xóa lịch sử trò chuyện. Bạn có thể tra cứu tự do (VD: "HPG thế nào?") hoặc sử dụng lệnh:<br/>
+            - <code>/analyze FPT</code>: Phân tích sâu kỹ thuật/cơ bản<br/>
+            - <code>/dca HPG</code>: Lập kế hoạch gom giá<br/>
+            - <code>/price TCB</code>: Báo giá nhanh
           </div>
         `;
       }
     });
   }
   
+  const suggestionsBox = root.querySelector("#chat-suggestions");
+  const availableCommands = [
+    { cmd: "/analyze", desc: "Phân tích sâu kĩ thuật & cơ bản cổ phiếu" },
+    { cmd: "/predict", desc: "Dự đoán xu hướng phát triển & tỷ lệ chuẩn xác %" },
+    { cmd: "/scenarios", desc: "Xây dựng kịch bản giao dịch (Tốt/Xấu/Đi ngang) %" },
+    { cmd: "/dca", desc: "Lập kế hoạch gom tích lũy / trung bình giá" },
+    { cmd: "/price", desc: "Xem nhanh báo giá và xu hướng chỉ báo" }
+  ];
+
+  let selectedIndex = 0;
+
+  function renderSuggestions(filterText) {
+    if (!suggestionsBox) return;
+    const filter = filterText.toLowerCase();
+    const matched = availableCommands.filter(c => c.cmd.startsWith(filter));
+    
+    if (matched.length === 0) {
+      suggestionsBox.style.display = "none";
+      selectedIndex = -1;
+      return;
+    }
+
+    // Reset selectedIndex if it goes out of range
+    if (selectedIndex >= matched.length || selectedIndex < 0) {
+      selectedIndex = 0;
+    }
+
+    suggestionsBox.innerHTML = matched.map((c, idx) => `
+      <div class="suggestion-item ${idx === selectedIndex ? 'selected' : ''}" data-cmd="${c.cmd}" data-index="${idx}">
+        <span class="suggestion-cmd">${c.cmd}</span>
+        <span class="suggestion-desc">${c.desc}</span>
+      </div>
+    `).join("");
+
+    suggestionsBox.style.display = "flex";
+  }
+
+  function hideSuggestions() {
+    if (suggestionsBox) {
+      suggestionsBox.style.display = "none";
+      selectedIndex = 0;
+    }
+  }
+
+  function updateSelection(newIndex) {
+    if (!suggestionsBox) return;
+    const items = suggestionsBox.querySelectorAll(".suggestion-item");
+    if (items.length === 0) return;
+
+    if (newIndex < 0) newIndex = items.length - 1;
+    if (newIndex >= items.length) newIndex = 0;
+
+    selectedIndex = newIndex;
+
+    items.forEach((item, idx) => {
+      if (idx === selectedIndex) {
+        item.classList.add("selected");
+        item.scrollIntoView({ block: "nearest" });
+      } else {
+        item.classList.remove("selected");
+      }
+    });
+  }
+
+  if (suggestionsBox) {
+    suggestionsBox.addEventListener("click", (e) => {
+      const item = e.target.closest(".suggestion-item");
+      if (!item) return;
+      const cmd = item.dataset.cmd;
+      inpChat.value = cmd + " ";
+      btnSend.disabled = false;
+      hideSuggestions();
+      inpChat.focus();
+    });
+  }
+
   if (inpChat) {
     inpChat.addEventListener("input", () => {
-      btnSend.disabled = inpChat.value.trim() === "";
+      const val = inpChat.value;
+      btnSend.disabled = val.trim() === "";
+      
+      if (val.startsWith("/")) {
+        renderSuggestions(val.split(/\s+/)[0]);
+      } else {
+        hideSuggestions();
+      }
     });
     inpChat.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        chatForm.dispatchEvent(new Event("submit"));
+      const isVisible = suggestionsBox && suggestionsBox.style.display === "flex";
+      
+      if (isVisible) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          updateSelection(selectedIndex + 1);
+        } else if (e.key === "ArrowUp") {
+          e.preventDefault();
+          updateSelection(selectedIndex - 1);
+        } else if (e.key === "Tab" || e.key === "Enter") {
+          e.preventDefault();
+          const items = suggestionsBox.querySelectorAll(".suggestion-item");
+          const selectedEl = items[selectedIndex];
+          if (selectedEl) {
+            const cmd = selectedEl.dataset.cmd;
+            inpChat.value = cmd + " ";
+            btnSend.disabled = false;
+            hideSuggestions();
+            inpChat.focus();
+          }
+        }
+      } else {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          chatForm.dispatchEvent(new Event("submit"));
+        }
       }
     });
   }
@@ -491,6 +660,7 @@ export function bindChatEvents(onSendChat, onClearChat, root = document) {
   if (chatForm) {
     chatForm.addEventListener("submit", async (e) => {
       e.preventDefault();
+      hideSuggestions();
       const text = inpChat.value.trim();
       if (!text) return;
       
@@ -504,9 +674,7 @@ export function bindChatEvents(onSendChat, onClearChat, root = document) {
       try {
         const responseText = await onSendChat(text);
         removeTypingIndicator(root);
-        // Safe HTML formatting: Escape first, then format bold
-        const escapedResp = escapeHTML(responseText);
-        const formattedResp = escapedResp.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+        const formattedResp = parseMarkdown(responseText);
         appendChatMessage("assistant", formattedResp, true, root);
       } catch (err) {
         removeTypingIndicator(root);
@@ -533,6 +701,12 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
       root.querySelector("#inp-trading-style").value = settings.tradingStyle || "lướt sóng";
       root.querySelector("#inp-risk-level").value = settings.riskLevel || "trung bình";
       
+      // Load Position Sizing / Capital Management
+      const inpBal = root.querySelector("#inp-account-balance");
+      if (inpBal) inpBal.value = settings.accountBalance || 100000000;
+      const inpRisk = root.querySelector("#inp-risk-percent");
+      if (inpRisk) inpRisk.value = settings.riskPercent || 2.0;
+
       // Load Telegram settings
       root.querySelector("#inp-tg-token").value = settings.tgToken || "";
       root.querySelector("#inp-tg-chatid").value = settings.tgChatId || "";
@@ -636,6 +810,12 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
       settings.tradingStyle = root.querySelector("#inp-trading-style").value;
       settings.riskLevel = root.querySelector("#inp-risk-level").value;
 
+      // Save Position Sizing
+      const inpBal = root.querySelector("#inp-account-balance");
+      if (inpBal) settings.accountBalance = parseFloat(inpBal.value) || 100000000;
+      const inpRisk = root.querySelector("#inp-risk-percent");
+      if (inpRisk) settings.riskPercent = parseFloat(inpRisk.value) || 2.0;
+
       // Save Telegram settings
       settings.tgToken = root.querySelector("#inp-tg-token").value.trim();
       settings.tgChatId = root.querySelector("#inp-tg-chatid").value.trim();
@@ -662,8 +842,8 @@ function renderTradeCard(trade, priceData) {
 
   let trendIndicator = "";
   if (priceData.ema200 && priceData.close) {
-    if (priceData.close > priceData.ema200) trendIndicator = "<span style='color:var(--profit);font-size:10px;margin-left:4px;' title='Trend Tăng'>▲</span>";
-    else if (priceData.close < priceData.ema200) trendIndicator = "<span style='color:var(--loss);font-size:10px;margin-left:4px;' title='Trend Giảm'>▼</span>";
+    if (priceData.close > priceData.ema200) trendIndicator = "<span style='color:var(--profit);font-size:10px;margin-left:4px;' data-tooltip='Trend Tăng'>▲</span>";
+    else if (priceData.close < priceData.ema200) trendIndicator = "<span style='color:var(--loss);font-size:10px;margin-left:4px;' data-tooltip='Trend Giảm'>▼</span>";
   }
 
   const safeSymbol = escapeHTML(trade.symbol);
@@ -672,7 +852,7 @@ function renderTradeCard(trade, priceData) {
 
   return `
     <div class="trade-header">
-      <span class="trade-symbol">${safeSymbol}${trendIndicator} <span class="btn-info" data-id="${trade.id}" style="cursor:pointer;font-size:12px;margin-left:4px;filter:grayscale(100%);" title="Xem phân tích kỹ thuật">ℹ️</span></span>
+      <span class="trade-symbol">${safeSymbol}${trendIndicator} <span class="btn-info" data-id="${trade.id}" style="cursor:pointer;font-size:12px;margin-left:4px;filter:grayscale(100%);" data-tooltip="Xem phân tích kỹ thuật">ℹ️</span></span>
       <span class="badge ${typeClass}">${trade.type}</span>
       <span class="trade-qty">×${fmt(parseFloat(trade.quantity))}</span>
     </div>
@@ -688,13 +868,67 @@ function renderTradeCard(trade, priceData) {
         ${fmtSigned(pnl / 1000)} <span class="pnl-pct">(${fmtSigned(pct)}%)</span>
       </div>
       <div class="trade-actions">
-        <button class="btn btn-view" data-symbol="${safeSymbol}" title="View on TradingView">📈 View</button>
-        <button class="btn btn-close-trade" data-id="${trade.id}" style="background:#089981; color:white;" title="Chốt Lời & Cấn Trừ Hạ Giá Vốn">💰 Chốt</button>
-        <button class="btn btn-dca" data-id="${trade.id}" style="background:#5264b3; color:white;" title="DCA / Gỡ Lỗ">🧮 DCA</button>
-        <button class="btn btn-edit"   data-id="${trade.id}" style="background:var(--bg-input); color:var(--text-primary);">✏️ Edit</button>
-        <button class="btn btn-delete" data-id="${trade.id}">🗑 Delete</button>
+        <button class="btn btn-view" data-symbol="${safeSymbol}" data-tooltip="Xem biểu đồ TradingView">📈 View</button>
+        <button class="btn btn-close-trade" data-id="${trade.id}" style="background:#089981; color:white;" data-tooltip="Chốt Lời & Cấn Trừ Hạ Giá Vốn">💰 Chốt</button>
+        <button class="btn btn-dca" data-id="${trade.id}" style="background:#5264b3; color:white;" data-tooltip="DCA / Gỡ Lỗ">🧮 DCA</button>
+        <button class="btn btn-edit"   data-id="${trade.id}" style="background:var(--bg-input); color:var(--text-primary); padding: 4px 6px;" data-tooltip="Sửa vị thế">✏️</button>
+        <button class="btn btn-delete" data-id="${trade.id}" style="background:var(--btn-del); color:white; padding: 4px 6px;" data-tooltip="Xóa vị thế">🗑</button>
       </div>
     </div>`;
+}
+
+/**
+ * Render Sector Health & Concentration Allocation Bar into #portfolio-sector-health.
+ */
+export function renderSectorAllocation(portfolio, priceMap = {}, root = document) {
+  const container = root.querySelector("#portfolio-sector-health");
+  if (!container) return;
+
+  if (!portfolio || portfolio.length === 0) {
+    container.style.display = "none";
+    container.innerHTML = "";
+    return;
+  }
+
+  const alloc = calculateSectorAllocation(portfolio, priceMap);
+  if (!alloc || alloc.sectors.length === 0) {
+    container.style.display = "none";
+    return;
+  }
+
+  const barSegments = alloc.sectors.map(s => `
+    <div style="width:${s.percent}%; background:${s.color}; height:100%;" data-tooltip="${s.name}: ${s.percent}%"></div>
+  `).join("");
+
+  const chips = alloc.sectors.slice(0, 4).map(s => `
+    <span style="font-size:10px; padding:2px 6px; border-radius:4px; background:rgba(255,255,255,0.04); border:1px solid ${s.color}; color:var(--text-primary); display:inline-flex; align-items:center; gap:4px;">
+      <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${s.color};"></span>
+      ${s.name}: <strong>${s.percent}%</strong>
+    </span>
+  `).join("");
+
+  const warningHtml = alloc.isConcentrated ? `
+    <div style="margin-top:6px; font-size:10px; color:#f59e0b; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); padding:4px 8px; border-radius:4px; line-height:1.3;">
+      ${alloc.warningMessage}
+    </div>
+  ` : "";
+
+  container.innerHTML = `
+    <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:8px 10px; box-shadow:var(--shadow);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <span style="font-size:11px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">📊 Phân Bổ Ngành & Rủi Ro</span>
+        <span style="font-size:10px; color:var(--text-muted);">${alloc.sectors.length} nhóm ngành</span>
+      </div>
+      <div style="display:flex; height:6px; border-radius:3px; overflow:hidden; background:rgba(255,255,255,0.05); margin-bottom:6px;">
+        ${barSegments}
+      </div>
+      <div style="display:flex; flex-wrap:wrap; gap:4px;">
+        ${chips}
+      </div>
+      ${warningHtml}
+    </div>
+  `;
+  container.style.display = "block";
 }
 
 /**
@@ -709,6 +943,9 @@ function renderTradeCard(trade, priceData) {
 export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}, root = document) {
   const container = root.querySelector("#portfolio-list");
   if (!container) return;
+
+  // Render Sector Health & Concentration Bar
+  renderSectorAllocation(portfolio, priceMap, root);
 
   // ── Empty state ──
   if (!portfolio || portfolio.length === 0) {
@@ -796,6 +1033,7 @@ export function renderPortfolio(portfolio, onDelete, onEdit, priceMap = {}, root
         root.querySelector("#dca-qty").textContent = fmt(trade.quantity);
         root.querySelector("#dca-entry").textContent = fmtDisplay(trade.entryPrice, trade.symbol);
         root.querySelector("#dca-current").textContent = fmtDisplay(currentDCAPrice, trade.symbol);
+        renderDCATechnicalAdvice(root, trade, priceData);
         const aiResponse = root.querySelector("#ai-dca-response");
         if (aiResponse) { aiResponse.style.display = "none"; aiResponse.innerHTML = ""; }
         root.querySelector("#inp-dca-qty").value = "";
@@ -915,6 +1153,96 @@ export function updateSummaryBar(portfolio, priceMap, root = document) {
     });
     allocationBar.innerHTML = barHtml;
   }
+}
+
+export function renderDCATechnicalAdvice(root, trade, priceData) {
+  const container = root.querySelector("#dca-tech-advice");
+  if (!container) return;
+
+  if (!priceData || !priceData.close) {
+    container.style.display = "none";
+    return;
+  }
+
+  const divisor = getDivisor(trade.symbol);
+  const curPrice = priceData.close / divisor;
+  const bbLower = (priceData.bb_lower || 0) / divisor;
+  const ema200 = (priceData.ema200 || 0) / divisor;
+  const rsi = Math.round(priceData.rsi || 0);
+  const isBuy = trade.type === "BUY";
+
+  let html = `<strong>💡 Cố vấn Kỹ thuật (TradingView)</strong><br/>`;
+  if (isBuy) {
+    html += `- Hỗ trợ BB Lower: <strong>${bbLower ? bbLower.toFixed(2) : "N/A"}</strong><br/>`;
+    html += `- Hỗ trợ EMA200: <strong>${ema200 ? ema200.toFixed(2) : "N/A"}</strong><br/>`;
+    html += `- Chỉ số RSI: <strong>${rsi}</strong> (${rsi <= 30 ? '<span style="color:var(--profit); font-weight:bold;">QUÁ BÁN</span>' : 'Bình thường'})<br/>`;
+
+    // Đánh giá vùng DCA
+    if (priceData.bb_lower && priceData.close <= priceData.bb_lower) {
+      html += `<div style="margin-top:6px; color:var(--profit); font-weight:500;">➔ Giá đã chạm/phá dưới dải dưới Bollinger Bands. Vùng DCA rất tốt!</div>`;
+    } else if (priceData.bb_lower && priceData.close > priceData.bb_lower) {
+      html += `<div style="margin-top:6px; color:var(--text-muted);">➔ Giá đang nằm trên dải dưới BB. Hãy cân nhắc gom thêm khi giá sát vùng hỗ trợ <strong>${bbLower.toFixed(2)}</strong>.</div>`;
+    }
+  } else {
+    // For SELL positions
+    const bbUpper = (priceData.bb_upper || 0) / divisor;
+    html += `- Kháng cự BB Upper: <strong>${bbUpper ? bbUpper.toFixed(2) : "N/A"}</strong><br/>`;
+    html += `- Kháng cự EMA200: <strong>${ema200 ? ema200.toFixed(2) : "N/A"}</strong><br/>`;
+    html += `- Chỉ số RSI: <strong>${rsi}</strong> (${rsi >= 70 ? '<span style="color:var(--loss); font-weight:bold;">QUÁ MUA</span>' : 'Bình thường'})<br/>`;
+
+    // Đánh giá vùng DCA
+    if (priceData.bb_upper && priceData.close >= priceData.bb_upper) {
+      html += `<div style="margin-top:6px; color:var(--profit); font-weight:500;">➔ Giá đã chạm/phá trên dải trên Bollinger Bands. Vùng DCA bán khống rất tốt!</div>`;
+    } else if (priceData.bb_upper && priceData.close < priceData.bb_upper) {
+      html += `<div style="margin-top:6px; color:var(--text-muted);">➔ Giá đang dưới dải trên BB. Cân nhắc chờ hồi sát kháng cự <strong>${bbUpper.toFixed(2)}</strong> trước khi bán thêm.</div>`;
+    }
+  }
+
+  container.innerHTML = html;
+  container.style.display = "block";
+}
+
+export function calculateFormPositionSize(root = document) {
+  const symIn = root.querySelector("#inp-symbol");
+  const riskIn = root.querySelector("#inp-risk-amt");
+  const entryIn = root.querySelector("#inp-entry");
+  const slIn = root.querySelector("#inp-sl");
+  const qtyIn = root.querySelector("#inp-qty");
+
+  if (!symIn || !riskIn || !entryIn || !slIn || !qtyIn) return;
+
+  const symbol = symIn.value.trim().toUpperCase();
+  const riskAmt = parseFloat(riskIn.value) || 0;
+  const entry = parseFloat(entryIn.value) || 0;
+  const sl = parseFloat(slIn.value) || 0;
+
+  // Cập nhật nhãn đơn vị tiền tệ tự động
+  const lblUnit = root.querySelector("#lbl-risk-unit");
+  if (lblUnit) {
+    const isVN = symbol.startsWith("HOSE:") || symbol.startsWith("HNX:") || symbol.startsWith("UPCOM:") || (symbol.length === 3 && !symbol.includes(":"));
+    lblUnit.textContent = isVN ? "VND" : "USD";
+  }
+
+  if (riskAmt <= 0 || entry <= 0 || sl <= 0 || entry === sl) {
+    return; // Không đủ thông tin tính toán
+  }
+
+  const divisor = getDivisor(symbol);
+  const diff = Math.abs(entry - sl);
+
+  // Qty = Risk / (Diff * Divisor)
+  let qty = riskAmt / (diff * divisor);
+
+  // Nếu là VN (divisor == 1000 hoặc lô 100), làm tròn xuống lô 100
+  if (divisor === 1000) {
+    qty = Math.floor(qty / 100) * 100;
+    if (qty < 100) qty = 100; // Tối thiểu 100 cổ phiếu tại VN
+  } else {
+    qty = Math.round(qty);
+    if (qty < 1) qty = 1;
+  }
+
+  qtyIn.value = qty;
 }
 
 /**
@@ -1160,6 +1488,18 @@ export function bindFormEvents(onSave, root = document) {
     symIn.setSelectionRange(pos, pos);
   });
 
+  // Lắng nghe thay đổi để tự động tính toán khối lượng vị thế (Position Sizing)
+  const riskIn = root.querySelector("#inp-risk-amt");
+  const entryIn = root.querySelector("#inp-entry");
+  const slIn = root.querySelector("#inp-sl");
+
+  const handleCalc = () => calculateFormPositionSize(root);
+  symIn.addEventListener("input", handleCalc);
+  if (riskIn) riskIn.addEventListener("input", handleCalc);
+  entryIn.addEventListener("input", handleCalc);
+  slIn.addEventListener("input", handleCalc);
+  typeSelect.addEventListener("change", handleCalc);
+
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     clearErrors();
@@ -1223,6 +1563,7 @@ export function populateForm(trade, root = document) {
   currentEditId = trade.id;
   const divisor = getDivisor(trade.symbol);
   root.querySelector("#inp-symbol").value = trade.symbol;
+  root.querySelector("#inp-risk-amt").value = "";
   root.querySelector("#inp-type").value = trade.type;
   root.querySelector("#inp-qty").value = trade.quantity;
   root.querySelector("#inp-entry").value = trade.entryPrice / divisor;
@@ -1301,7 +1642,7 @@ export function renderHistory(history, root = document) {
 
     const dateStr = new Date(record.date).toLocaleString("vi-VN");
     const pnlClass = record.realizedPnl >= 0 ? "profit" : "loss";
-    const typeClass = record.type === "BUY" ? "badge-buy" : "badge-sell";
+    const typeClass = record.type.includes("BUY") ? "badge-buy" : "badge-sell";
     
     // Convert to display currency bounds
     const displayPnl = record.realizedPnl / 1000;
@@ -1341,3 +1682,242 @@ export function renderHistory(history, root = document) {
 
   container.innerHTML = htmlBytes.join("");
 }
+
+export function bindDeepResearchEvents(onResearch, root = document) {
+  const btn = root.querySelector("#btn-deep-research");
+  const inp = root.querySelector("#inp-deep-symbol");
+  
+  if (btn && inp) {
+    btn.addEventListener("click", async () => {
+      const symbol = inp.value.trim().toUpperCase();
+      if (!symbol) return;
+      btn.disabled = true;
+      btn.textContent = "Đang Phân Tích...";
+      try {
+        await onResearch(symbol);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Phân Tích";
+      }
+    });
+    
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") btn.click();
+    });
+  }
+}
+
+export function renderDeepResearch(data, root = document) {
+  const container = root.querySelector("#deep-research-content");
+  if (!container) return;
+
+  if (!data || data.error) {
+    container.innerHTML = `<div class="empty-state" style="color:var(--loss);">❌ Lỗi: ${data?.error || "Không thể phân tích mã này."}</div>`;
+    return;
+  }
+
+  const badgeColor = data.score >= 7 ? "var(--profit)" : data.score >= 5 ? "var(--warning, #f1c40f)" : "var(--loss)";
+  const renderList = (arr) => {
+    if (!arr || !arr.length) return "<li>Không có dữ liệu</li>";
+    return arr.map(item => `<li>${item}</li>`).join("");
+  };
+
+  container.innerHTML = `
+    <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; padding:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px; margin-bottom:12px;">
+        <h2 style="margin:0; font-size:18px; color:var(--text-primary);">${data.symbol} <span style="background:${badgeColor}; color:white; font-size:12px; padding:2px 8px; border-radius:12px; vertical-align:middle; margin-left:8px;">Score: ${data.score}/10</span></h2>
+        <span style="font-weight:bold; color:${data.action === 'MUA' ? 'var(--profit)' : data.action === 'BÁN' ? 'var(--loss)' : 'var(--warning, #f1c40f)'}; font-size:14px; border:1px solid currentColor; padding:4px 12px; border-radius:4px;">${data.action}</span>
+      </div>
+      
+      <p style="font-size:13px; line-height:1.5; color:var(--text-primary); margin-bottom:16px;"><strong>Tóm tắt:</strong> ${data.summary}</p>
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px;">
+        <div style="background:rgba(0,0,0,0.1); padding:12px; border-radius:6px; border:1px solid rgba(255,255,255,0.05);">
+          <h3 style="margin-top:0; font-size:13px; color:var(--accent-blue);">📊 Phân tích Kỹ thuật</h3>
+          <p style="font-size:12px; line-height:1.4; color:var(--text-muted);">${data.technical}</p>
+        </div>
+        <div style="background:rgba(0,0,0,0.1); padding:12px; border-radius:6px; border:1px solid rgba(255,255,255,0.05);">
+          <h3 style="margin-top:0; font-size:13px; color:var(--profit);">🏦 Phân tích Cơ bản</h3>
+          <p style="font-size:12px; line-height:1.4; color:var(--text-muted);">${data.fundamental}</p>
+        </div>
+      </div>
+      
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; font-size:12px; background:rgba(255,255,255,0.02); padding:12px; border-radius:6px;">
+        <div>
+          <h4 style="color:var(--profit); margin-bottom:4px; margin-top:0;">💪 Điểm mạnh (Strengths)</h4>
+          <ul style="color:var(--text-muted); padding-left:16px; margin-top:0;">${renderList(data.swot?.strengths)}</ul>
+          <h4 style="color:var(--accent-blue); margin-bottom:4px; margin-top:12px;">🌟 Cơ hội (Opportunities)</h4>
+          <ul style="color:var(--text-muted); padding-left:16px; margin-top:0;">${renderList(data.swot?.opportunities)}</ul>
+        </div>
+        <div>
+          <h4 style="color:var(--loss); margin-bottom:4px; margin-top:0;">📉 Điểm yếu (Weaknesses)</h4>
+          <ul style="color:var(--text-muted); padding-left:16px; margin-top:0;">${renderList(data.swot?.weaknesses)}</ul>
+          <h4 style="color:var(--warning, #f1c40f); margin-bottom:4px; margin-top:12px;">⚠️ Rủi ro (Threats)</h4>
+          <ul style="color:var(--text-muted); padding-left:16px; margin-top:0;">${renderList(data.swot?.threats)}</ul>
+        </div>
+      </div>
+      
+      ${data.trading_plan ? `
+      <div style="margin-top:16px; background:rgba(0,0,0,0.2); border:1px solid rgba(255,255,255,0.1); padding:12px; border-radius:6px;">
+        <h3 style="margin:0 0 12px 0; font-size:14px; color:var(--text-primary);">🎯 Kế hoạch Giao dịch</h3>
+        <div style="display:flex; justify-content:space-between; text-align:center; gap:8px;">
+          <div style="flex:1; background:rgba(255,255,255,0.05); padding:8px; border-radius:4px; border-top:3px solid var(--accent-blue);">
+            <div style="font-size:10px; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.3px;">Giá Vào (Entry)</div>
+            <div class="price-zone-indicator price-zone-entry" style="display:block; text-align:center; padding:4px 2px;">${data.trading_plan.entry || "-"}</div>
+          </div>
+          <div style="flex:1; background:rgba(255,255,255,0.05); padding:8px; border-radius:4px; border-top:3px solid var(--profit);">
+            <div style="font-size:10px; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.3px;">Mục Tiêu (Target)</div>
+            <div class="price-zone-indicator price-zone-target" style="display:block; text-align:center; padding:4px 2px;">${data.trading_plan.target || "-"}</div>
+          </div>
+          <div style="flex:1; background:rgba(255,255,255,0.05); padding:8px; border-radius:4px; border-top:3px solid var(--loss);">
+            <div style="font-size:10px; color:var(--text-muted); margin-bottom:6px; text-transform:uppercase; letter-spacing:0.3px;">Cắt Lỗ (Stoploss)</div>
+            <div class="price-zone-indicator price-zone-stoploss" style="display:block; text-align:center; padding:4px 2px;">${data.trading_plan.stoploss || "-"}</div>
+          </div>
+        </div>
+      </div>
+      ` : ""}
+    </div>
+  `;
+}
+
+// ── Phase 2: Caught Signals UI ──
+
+export function renderCaughtSignals(signals, root = document) {
+  const container = root.querySelector("#caught-signals-list");
+  if (!container) return;
+
+  if (!signals || signals.length === 0) {
+    container.innerHTML = `<div class="empty-state">Đang chờ tín hiệu từ TradingView...</div>`;
+    return;
+  }
+
+  container.innerHTML = signals.map((sig, idx) => {
+    const timeStr = sig.timestamp ? new Date(sig.timestamp).toLocaleTimeString() : "";
+    const isBuy = sig.action === "BUY";
+    const typeClass = isBuy ? "badge-buy" : "badge-sell";
+    const actionText = isBuy ? "MUA" : "BÁN";
+    const symbol = sig.symbol || "UNKNOWN";
+    
+    // Tính toán Risk/Reward đơn giản
+    const risk = Math.abs(sig.price - (sig.sl || sig.price));
+    const reward = Math.abs((sig.tp1 || sig.price) - sig.price);
+    const rr = risk > 0 ? (reward / risk).toFixed(1) : "N/A";
+    const scoreStars = sig.score ? "⭐".repeat(Math.round(sig.score)) : "";
+
+    return `
+      <div class="scanner-card" style="border-left: 3px solid ${isBuy ? 'var(--profit)' : 'var(--loss)'}; padding: 12px; margin-bottom: 8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 8px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="badge ${typeClass}">${actionText}</span>
+            <strong style="font-size:14px;">${symbol}</strong>
+            <span style="font-size:10px; color:var(--text-muted);">${timeStr}</span>
+          </div>
+          <div style="font-size:10px;">${scoreStars}</div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; margin-bottom:8px; background:rgba(255,255,255,0.02); padding:8px; border-radius:4px;">
+          <div><span style="color:var(--text-muted);">Giá báo:</span> <strong style="font-size:12px;">${fmt(sig.price)}</strong></div>
+          <div><span style="color:var(--text-muted);">Vị thế (Size):</span> <strong>${fmt(sig.size || 0)}</strong></div>
+          <div><span style="color:var(--text-muted);">Cắt lỗ (SL):</span> <strong style="color:var(--loss);">${sig.sl ? fmt(sig.sl) : 'N/A'}</strong></div>
+          <div><span style="color:var(--text-muted);">Chốt lời (TP1):</span> <strong style="color:var(--profit);">${sig.tp1 ? fmt(sig.tp1) : 'N/A'}</strong></div>
+        </div>
+        
+        <!-- Risk Calculator (Inline) -->
+        <div style="background:var(--bg-input); padding:8px; border-radius:4px; margin-bottom:8px; border:1px solid var(--border);">
+           <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">Mô phỏng vốn rủi ro (Risk Calculator):</div>
+           <div style="display:flex; gap:6px; align-items:center;">
+             <input type="number" class="inp-sim-risk full-width" placeholder="VD: Rủi ro 500,000đ" style="padding:4px 8px; font-size:11px;" />
+             <button class="btn btn-calc-risk" data-risk="${risk}" style="background:var(--bg-hover); color:var(--text-primary); padding:4px 8px; font-size:11px; white-space:nowrap;">Tính Khối Lượng</button>
+           </div>
+           <div class="res-calc-risk" style="font-size:11px; margin-top:6px; color:var(--profit); font-weight:bold; display:none;"></div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; border-top: 1px solid var(--border); padding-top: 8px; margin-top: 4px;">
+          <div style="font-size:10px;">
+            <span style="color:var(--text-muted);">Tỷ lệ R:R = </span> <strong>1 : ${rr}</strong>
+          </div>
+          <button class="btn btn-add-signal" data-idx="${idx}" style="background:linear-gradient(90deg, #1A73E8, #8E24AA); color:white; padding:4px 12px; font-size:11px; border-radius:4px;">Nhập Danh Mục ➕</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+export function bindCaughtSignalEvents(getLatestSignals, onSaveToPortfolio, onClearSignals, root = document) {
+  const container = root.querySelector("#caught-signals-list");
+  if (container) {
+    container.addEventListener("click", (e) => {
+      // 1. Add to Portfolio
+      const btnAdd = e.target.closest(".btn-add-signal");
+      if (btnAdd) {
+        const idx = btnAdd.dataset.idx;
+        const sig = getLatestSignals()[idx];
+        if (sig && onSaveToPortfolio) {
+          onSaveToPortfolio(sig);
+        }
+        return;
+      }
+      
+      // 2. Calculate Risk
+      const btnCalc = e.target.closest(".btn-calc-risk");
+      if (btnCalc) {
+        const card = btnCalc.closest(".scanner-card");
+        const inp = card.querySelector(".inp-sim-risk");
+        const resDiv = card.querySelector(".res-calc-risk");
+        const riskPerShare = parseFloat(btnCalc.dataset.risk);
+        const totalRisk = parseFloat(inp.value);
+        if (totalRisk > 0 && riskPerShare > 0) {
+           const qty = Math.floor(totalRisk / riskPerShare);
+           resDiv.innerHTML = `Khối lượng mua tối đa: <span style="font-size:13px;">${qty}</span> cổ phiếu.`;
+           resDiv.style.display = "block";
+        } else {
+           resDiv.innerHTML = "Vui lòng nhập số tiền rủi ro hợp lệ (VD: 500000).";
+           resDiv.style.display = "block";
+        }
+      }
+    });
+  }
+
+  const btnClear = root.querySelector("#btn-clear-signals");
+  if (btnClear) {
+    btnClear.addEventListener("click", () => {
+      if (confirm("Xóa toàn bộ tín hiệu đã bắt?")) {
+        if (onClearSignals) onClearSignals();
+      }
+    });
+  }
+}
+
+/**
+ * Bind the Side Panel toggle button in Header.
+ */
+export function bindSidePanelButton(root = document) {
+  const btnSidePanel = root.querySelector("#btn-sidepanel");
+  if (btnSidePanel) {
+    btnSidePanel.addEventListener("click", async (e) => {
+      e.preventDefault();
+      if (typeof chrome !== "undefined" && chrome.sidePanel && chrome.sidePanel.open) {
+        try {
+          const win = await chrome.windows.getCurrent();
+          if (win && win.id) {
+            await chrome.sidePanel.open({ windowId: win.id });
+            setTimeout(() => window.close(), 150);
+            return;
+          }
+          const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+          if (tab && tab.id) {
+            await chrome.sidePanel.open({ tabId: tab.id });
+            setTimeout(() => window.close(), 150);
+            return;
+          }
+        } catch (err) {
+          console.warn("[TPP] sidePanel.open notice:", err);
+          alert("💡 Cách mở Side Panel nhanh trên Chrome:\n1. Click chuột phải vào biểu tượng Extension Trading Portfolio Pro trên thanh công cụ Chrome.\n2. Chọn 'Mở bảng điều khiển bên' (Open side panel).\n\nThanh bên sẽ ghim cố định bên cạnh TradingView!");
+        }
+      } else {
+        alert("💡 Cách mở Side Panel nhanh trên Chrome:\n1. Click chuột phải vào biểu tượng Extension Trading Portfolio Pro trên thanh công cụ Chrome.\n2. Chọn 'Mở bảng điều khiển bên' (Open side panel).\n\nThanh bên sẽ ghim cố định bên cạnh TradingView!");
+      }
+    });
+  }
+}
+
+

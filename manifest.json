@@ -4,10 +4,12 @@
   "version": "1.0.0",
   "description": "Track your trades and calculate real-time PnL with TradingView integration.",
   "action": {
-    "default_popup": "popup.html",
     "default_title": "Trading Portfolio Pro"
   },
-  "permissions": ["storage", "tabs", "alarms", "notifications"],
+  "permissions": ["storage", "tabs", "alarms", "notifications", "sidePanel"],
+  "side_panel": {
+    "default_path": "popup.html"
+  },
   "host_permissions": [
     "*://*.tradingview.com/*",
     "https://api.telegram.org/*"

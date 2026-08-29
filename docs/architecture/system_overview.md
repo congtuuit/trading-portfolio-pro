@@ -10,6 +10,7 @@
     *   `price.js`: Lấy giá thời gian thực và các chỉ báo kỹ thuật (Scanner API).
     *   `history.js`: Lấy dữ liệu nến lịch sử (OHLCV) phục vụ phân tích Price Action.
 4.  **AI Engine (`ai.js`)**: Kết nối với Gemini/OpenAI để đưa ra các khuyến nghị đầu tư thông minh.
+    * Tích hợp bộ **Risk & Reward Engine** (`utils.js`, `app.js`): Tự động tính toán và lọc các tín hiệu giao dịch dựa trên tỷ lệ Rủi ro/Lợi nhuận (Min R:R).
 5.  **Background Processor (`background.js`)**: Chạy ngầm để theo dõi danh mục, gửi thông báo Telegram và làm Proxy vượt rào CORS cho các API bên ngoài.
 6.  **Persistence Layer (`storage.js`)**: Trừu tượng hóa việc lưu trữ vào `chrome.storage.local`.
 

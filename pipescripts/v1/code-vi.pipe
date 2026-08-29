@@ -1,8 +1,8 @@
 // This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
-// © congtuuit — Hybrid Trading System Zone Engine V4 (Pro)
+// © congtuuit — Hybrid Trading System Zone Engine V2 + Professional Enhancements
 
 //@version=5
-indicator("Hybrid Trading System - Zone Engine V4", overlay=true, max_boxes_count=150, max_labels_count=300, max_lines_count=200)
+indicator("Hybrid Trading System - Zone Engine V3", overlay=true, max_boxes_count=150, max_labels_count=300, max_lines_count=200)
 
 // =====================================================
 // 1) DATA MODEL
@@ -22,31 +22,30 @@ type Zone
 // 2) INPUTS
 // =====================================================
 
-// ── Pivot & Zones ──
-grp_zone = "🧱 Cài Đặt Vùng Cản (Zones)"
-pivot_left  = input.int(20, "Số nến dò Đỉnh/Đáy (Trái)",  minval=1, group=grp_zone)
-pivot_right = input.int(5,  "Số nến dò Đỉnh/Đáy (Phải)", minval=1, group=grp_zone)
-zone_width_mode   = input.string("ATR", "Cách tính Rộng Vùng Cản", options=["ATR","Percent"], group=grp_zone)
-zone_width_pct    = input.float(0.5, "Độ Rộng Vùng (%)", minval=0.1, step=0.1, group=grp_zone) / 100.0
-atr_length        = input.int(14, "Chu kỳ ATR", minval=1, group=grp_zone)
-atr_zone_mult     = input.float(0.5, "Hệ số ATR Vùng Cản", minval=0.1, step=0.1, group=grp_zone)
-max_active_zones  = input.int(12, "Số Vùng Cản Tối Đa", minval=1, maxval=50, group=grp_zone)
-min_zone_distance = input.float(0.4, "Khoảng cách Vùng mới Min (ATR)", minval=0.1, step=0.1, group=grp_zone)
-req_imbalance     = input.bool(false, "Chỉ lấy Vùng có FVG/Imbalance mạnh", tooltip="Yêu cầu nến ngay sau đỉnh/đáy phải là nến có thân lớn hơn 0.8 ATR để đảm bảo đó là lực đẩy của Cá mập, không phải pullback yếu.", group=grp_zone)
+// ── Pivot ──
+pivot_left  = input.int(20, "Số nến dò Đỉnh/Đáy (Trái)",  minval=1)
+pivot_right = input.int(5,  "Số nến dò Đỉnh/Đáy (Phải)", minval=1)
+
+// ── Zone ──
+zone_width_mode   = input.string("ATR", "Cách tính Rộng Vùng Cản", options=["ATR","Percent"])
+zone_width_pct    = input.float(0.5, "Độ Rộng Vùng (%)", minval=0.1, step=0.1) / 100.0
+atr_length        = input.int(14, "Chu kỳ ATR", minval=1)
+atr_zone_mult     = input.float(0.5, "Hệ số ATR Vùng Cản", minval=0.1, step=0.1)
+max_active_zones  = input.int(12, "Số Vùng Cản Tối Đa", minval=1, maxval=50)
+min_zone_distance = input.float(0.4, "Khoảng cách Vùng mới Min (ATR)", minval=0.1, step=0.1)
 
 // ── Regime ──
 ema_length = input.int(200, "Chu kỳ EMA Xu hướng", minval=1)
 
 // ── Trigger ──
-grp_trigger = "🎯 Điều Kiện Vào Lệnh (Trigger)"
-use_regime_filter  = input.bool(true,  "Bật Lọc Thuận Xu Hướng EMA", group=grp_trigger)
-first_touch_only   = input.bool(true,  "Chỉ Giao Dịch Chạm Lần Đầu", group=grp_trigger)
-min_body_atr_ratio = input.float(0.20, "Tỉ lệ Thân Nến Tối Thiểu / ATR", minval=0.0, step=0.05, group=grp_trigger)
-wick_to_body_ratio = input.float(2.0,  "Độ dài Râu / Thân tối thiểu", minval=1.0, step=0.25, group=grp_trigger)
-require_bull_close = input.bool(true,  "Yêu cầu Đóng nến Xanh để MUA", group=grp_trigger)
-require_bear_close = input.bool(true,  "Yêu cầu Đóng nến Đỏ để BÁN", group=grp_trigger)
-label_signals      = input.bool(true,  "Hiện Nhãn Tín Hiệu", group=grp_trigger)
-delete_invalidated_boxes = input.bool(false, "Xoá Hộp bị thủng (Thay vì Mờ Hệ số)", group=grp_trigger)
+use_regime_filter  = input.bool(true,  "Bật Lọc Thuận Xu Hướng EMA")
+first_touch_only   = input.bool(true,  "Chỉ Giao Dịch Chạm Lần Đầu")
+min_body_atr_ratio = input.float(0.20, "Tỉ lệ Thân Nến Tối Thiểu / ATR", minval=0.0, step=0.05)
+wick_to_body_ratio = input.float(2.0,  "Độ dài Râu / Thân tối thiểu", minval=1.0, step=0.25)
+require_bull_close = input.bool(true,  "Yêu cầu Đóng nến Xanh để MUA")
+require_bear_close = input.bool(true,  "Yêu cầu Đóng nến Đỏ để BÁN")
+label_signals      = input.bool(true,  "Hiện Nhãn Tín Hiệu")
+delete_invalidated_boxes = input.bool(false, "Xoá Hộp bị thủng (Thay vì Mờ Hệ số)")
 
 // ── Trend Signal ──
 grp_trend = "📈 Cài Đặt Tín Hiệu Trend"
@@ -54,14 +53,17 @@ show_trend_bg      = input.bool(true, "Hiện màu nền Xu hướng",        gr
 show_trend_signals = input.bool(true, "Hiện Mũi tên Mua/Bán theo trend",group=grp_trend)
 trend_confirm_bars = input.int(3, "Số nến xác nhận Trend mạnh", minval=1, maxval=20, group=grp_trend)
 
-// ── Future Prediction & Win-Rate ──
-grp_future = "🔮 Dự Báo & Thống Kê Tỉ Lệ Thắng"
+// ── Future Prediction ──
+grp_future = "🔮 Dự Báo Tương Lai"
 show_future_pred = input.bool(true, "Hiện Dự Báo Đường Đi Tương Lai", group=grp_future)
 future_sessions  = input.int(5,  "Số nến Dự báo tới", group=grp_future, minval=1, maxval=50)
 pred_line_style  = input.string("Dashed", "Kiểu Nét Đường Dự Báo", options=["Dashed","Dotted","Solid"], group=grp_future)
-show_winrate_label  = input.bool(true, "Hiện Nhãn Tỉ Lệ Thắng", group=grp_future)
-winrate_min_samples = input.int(3, "Mẫu số Lệnh Tối Thiểu", minval=1, maxval=50, group=grp_future)
-winrate_source      = input.string("Both", "Đánh giá theo loại lệnh", options=["Both","Buy Only","Sell Only"], group=grp_future)
+
+// ── Win-Rate ──
+grp_winrate = "📊 Thống Kê Tỉ Lệ Thắng"
+show_winrate_label  = input.bool(true, "Hiện Nhãn Tỉ Lệ Thắng", group=grp_winrate)
+winrate_min_samples = input.int(3, "Mẫu số Lệnh Tối Thiểu", minval=1, maxval=50, group=grp_winrate)
+winrate_source      = input.string("Both", "Đánh giá theo loại lệnh", options=["Both","Buy Only","Sell Only"], group=grp_winrate)
 
 // ── Bollinger Bands ──
 grp_bb = "🟦 Dải Bollinger Bands"
@@ -84,11 +86,10 @@ rr_ratio_2     = input.float(2.0,  "Tỉ lệ Rủi ro:Lợi nhuận TP2",    gr
 grp_pos = "💼 Tính Toán Khối Lượng Đầu Tư"
 account_bal = input.float(10000.0,"Vốn Tài Khoản ($)", group=grp_pos, minval=100)
 risk_pct    = input.float(1.0,    "Vốn Rủi ro / Lệnh Dịch (%)",  group=grp_pos, minval=0.1, step=0.1)
-is_forex    = input.bool(false,   "Là tài sản Forex? (Chuyển Units sang Lot)", group=grp_pos, tooltip="Bật nếu giao dịch Forex để công thức tự quy đổi giá trị Pip thành Khối lượng hợp đồng (Lot).")
 
 // ── #2 Volume Confirmation ──
 grp_vol = "📊 Bộ Lọc Khối Lượng"
-use_vol_filter = input.bool(false, "Yêu cầu có Dòng Tiền Đột Biến (Thận trọng với Forex)", group=grp_vol)
+use_vol_filter = input.bool(true, "Yêu cầu có Dòng Tiền Đột Biến", group=grp_vol)
 vol_ma_length  = input.int(20,   "Chu kỳ MA Khối Lượng",     group=grp_vol, minval=1)
 vol_surge_mult = input.float(1.5,"Mức Khối lượng / Trung bình tối thiểu", group=grp_vol, minval=1.0, step=0.1)
 
@@ -127,6 +128,14 @@ var int  bear_streak     = 0
 var bool trend_buy_signal  = false
 var bool trend_sell_signal = false
 
+// SL/TP persistent lines
+var line sl_line   = na
+var line tp1_line  = na
+var line tp2_line  = na
+var label sl_label = na
+var label tp1_label= na
+var label tp2_label= na
+
 // Future prediction
 var line  future_line   = na
 var label future_label  = na
@@ -134,10 +143,9 @@ var label winrate_label = na
 var string last_signal_type  = "NONE"
 var float  last_signal_price = na
 
-// Win-rate buffer (Upgraded with SL tracking)
+// Win-rate buffer
 var int[]   wr_bars   = array.new<int>()
 var float[] wr_prices = array.new<float>()
-var float[] wr_sls    = array.new<float>()
 var int[]   wr_dirs   = array.new<int>()
 var int buy_wins   = 0
 var int buy_total  = 0
@@ -166,6 +174,7 @@ bb_basis = bb_ma(bb_src, bb_length, bb_ma_type)
 bb_dev   = bb_mult * ta.stdev(bb_src, bb_length)
 bb_upper = bb_basis + bb_dev
 bb_lower = bb_basis - bb_dev
+bb_width = (bb_upper - bb_lower) / bb_basis * 100
 
 plot(bb_basis, "BB Basis", color=#2962FF,  offset=bb_offset)
 bb_p1 = plot(bb_upper, "BB Upper", color=#F23645, offset=bb_offset)
@@ -178,7 +187,7 @@ plot(ema_regime, color=color.gray, title="EMA Regime")
 vol_ma  = ta.sma(volume, vol_ma_length)
 vol_ok_global = use_vol_filter ? volume >= vol_ma * vol_surge_mult : true
 
-// ── #3 HTF (Upgraded Non-Repainting) ──
+// ── #3 HTF ──
 get_auto_htf() =>
     string res = "D"
     if timeframe.isintraday
@@ -198,8 +207,7 @@ get_auto_htf() =>
 
 actual_htf = htf_mode == "Auto" ? get_auto_htf() : htf_custom
 
-// SỬ DỤNG [1] CỦA HTF KẾT HỢP LOOKAHEAD_ON ĐỂ CHỐNG REPAINTING 100%
-htf_ema  = request.security(syminfo.tickerid, actual_htf, ta.ema(close, htf_ema_l)[1], lookahead=barmerge.lookahead_on)
+htf_ema  = request.security(syminfo.tickerid, actual_htf, ta.ema(close, htf_ema_l), gaps=barmerge.gaps_off)
 htf_bull = close > htf_ema
 htf_bear = close < htf_ema
 
@@ -214,7 +222,7 @@ in_session = in_london or in_ny
 is_intraday_chart = timeframe.isintraday
 session_ok = use_session_filter and is_intraday_chart ? in_session : true
 
-// ── #8 MACD Divergence ──
+// ── #8 MACD Divergence (Advanced Pivot-Based) ──
 [macd_line, macd_signal, macd_hist] = ta.macd(close, 12, 26, 9)
 
 pl_macd = ta.pivotlow(macd_hist, 3, 3)
@@ -280,7 +288,7 @@ create_zone(float pivot_price, int z_type) =>
          bgcolor=z_color,
          border_color=z_type == 1 ? color.new(color.green, 20) : color.new(color.red, 20),
          border_style=line.style_dotted)
-    // ── #7 Zone strength & Imbalance Check ──
+    // ── #7 Zone strength: bonus for high-volume creation bar ──
     vol_bonus = volume[pivot_right] >= vol_ma * 1.5 ? 0.25 : 0.0
     Zone.new(z_top, z_bottom, bar_index[pivot_right], z_type, 0, 1.0 + vol_bonus, true, false, z_box)
 
@@ -355,32 +363,26 @@ fade_or_delete_zone(Zone z) =>
         box.set_bgcolor(z.box_id, color.new(color.gray, 90))
         box.set_border_color(z.box_id, color.gray)
 
+// (SL/TP is drawn inline in zone trigger — Pine Script cannot modify var globals inside functions)
+
 // =====================================================
 // 6) ZONE CREATION
 // =====================================================
 can_add_zone() => array.size(active_zones) < max_active_zones
 
 if not na(ph)
-    // Check FVG/Imbalance logic: look at the bar right after the pivot high
-    body_after = math.abs(close[pivot_right - 1] - open[pivot_right - 1])
-    is_imbal   = close[pivot_right - 1] < open[pivot_right - 1] and body_after > atr_value[pivot_right - 1] * 0.8
-    if not req_imbalance or is_imbal
-        half_width = get_zone_half_width(ph)
-        new_top    = ph + half_width
-        new_bottom = ph
-        if can_add_zone() and not is_zone_duplicate(new_top, new_bottom, -1)
-            array.push(active_zones, create_zone(ph, -1))
+    half_width = get_zone_half_width(ph)
+    new_top    = ph + half_width
+    new_bottom = ph
+    if can_add_zone() and not is_zone_duplicate(new_top, new_bottom, -1)
+        array.push(active_zones, create_zone(ph, -1))
 
 if not na(pl)
-    // Check FVG/Imbalance logic: look at the bar right after the pivot low
-    body_after = math.abs(close[pivot_right - 1] - open[pivot_right - 1])
-    is_imbal   = close[pivot_right - 1] > open[pivot_right - 1] and body_after > atr_value[pivot_right - 1] * 0.8
-    if not req_imbalance or is_imbal
-        half_width = get_zone_half_width(pl)
-        new_top    = pl
-        new_bottom = pl - half_width
-        if can_add_zone() and not is_zone_duplicate(new_top, new_bottom, 1)
-            array.push(active_zones, create_zone(pl, 1))
+    half_width = get_zone_half_width(pl)
+    new_top    = pl
+    new_bottom = pl - half_width
+    if can_add_zone() and not is_zone_duplicate(new_top, new_bottom, 1)
+        array.push(active_zones, create_zone(pl, 1))
 
 // =====================================================
 // 7) ZONE MANAGER + TRIGGER ENGINE
@@ -392,6 +394,7 @@ if barstate.isconfirmed and array.size(active_zones) > 0
 
         if is_zone_touched(z)
             z.touch_count += 1
+            // #7 Zone strength: decay harder on repeat touches
             decay = z.touch_count > 2 ? 0.25 : 0.15
             z.strength_score := math.max(0.0, z.strength_score - decay)
 
@@ -416,25 +419,35 @@ if barstate.isconfirmed and array.size(active_zones) > 0
                     buy_tp1 = close + (close - buy_sl) * rr_ratio_1
                     buy_tp2 = close + (close - buy_sl) * rr_ratio_2
                     risk_amount = account_bal * (risk_pct / 100.0)
+                    units_to_buy = risk_amount / math.abs(close - buy_sl)
                     
-                    // Forex PIP adjustment vs Crypto Base Unit
-                    dist = math.abs(close - buy_sl)
-                    units_to_buy = is_forex ? (risk_amount / (dist * 100000)) : (risk_amount / dist)
-                    unit_label = is_forex ? "Lot: " : "Units: "
-                    
-                    lbl_text = "MUA " + stars + "\n" + unit_label + str.tostring(units_to_buy, "#.##") + "\nVô: " + str.tostring(close, format.mintick)
+                    lbl_text = "MUA " + stars + "\nKL (Units): " + str.tostring(units_to_buy, "#.##") + "\nĐiểm Vô: " + str.tostring(close, format.mintick)
                     if label_signals
                         label.new(bar_index, low, lbl_text, color=color.green, style=label.style_label_up, textcolor=color.white, size=size.small)
                         
                     if show_sl_tp
-                        line.new(bar_index, buy_sl, bar_index + future_sessions, buy_sl, color=color.new(color.red, 20),   width=1, style=line.style_dashed)
-                        line.new(bar_index, buy_tp1, bar_index + future_sessions, buy_tp1, color=color.new(color.orange, 20), width=1, style=line.style_dashed)
-                        line.new(bar_index, buy_tp2, bar_index + future_sessions, buy_tp2, color=color.new(color.green, 20), width=1, style=line.style_dashed)
-                        label.new(bar_index + future_sessions, buy_sl, "SL " + str.tostring(buy_sl, format.mintick), color=color.new(color.red, 20),   style=label.style_label_left, textcolor=color.white, size=size.small)
-                        label.new(bar_index + future_sessions, buy_tp1, "TP1 " + str.tostring(buy_tp1, format.mintick), color=color.new(color.orange, 20), style=label.style_label_left, textcolor=color.white, size=size.small)
-                        label.new(bar_index + future_sessions, buy_tp2, "TP2 " + str.tostring(buy_tp2, format.mintick), color=color.new(color.green, 20), style=label.style_label_left, textcolor=color.white, size=size.small)
+                        if not na(sl_line)
+                            line.delete(sl_line)
+                        if not na(tp1_line)
+                            line.delete(tp1_line)
+                        if not na(tp2_line)
+                            line.delete(tp2_line)
+                        if not na(sl_label)
+                            label.delete(sl_label)
+                        if not na(tp1_label)
+                            label.delete(tp1_label)
+                        if not na(tp2_label)
+                            label.delete(tp2_label)
+                            
+                        sl_line   := line.new(bar_index, buy_sl, bar_index + future_sessions, buy_sl, color=color.new(color.red, 20),   width=1, style=line.style_dashed)
+                        tp1_line  := line.new(bar_index, buy_tp1, bar_index + future_sessions, buy_tp1, color=color.new(color.orange, 20), width=1, style=line.style_dashed)
+                        tp2_line  := line.new(bar_index, buy_tp2, bar_index + future_sessions, buy_tp2, color=color.new(color.green, 20), width=1, style=line.style_dashed)
+                        sl_label  := label.new(bar_index + future_sessions, buy_sl, "SL " + str.tostring(buy_sl, format.mintick), color=color.new(color.red, 20),   style=label.style_label_left, textcolor=color.white, size=size.small)
+                        tp1_label := label.new(bar_index + future_sessions, buy_tp1, "TP1(BE) " + str.tostring(buy_tp1, format.mintick), color=color.new(color.orange, 20), style=label.style_label_left, textcolor=color.white, size=size.small)
+                        tp2_label := label.new(bar_index + future_sessions, buy_tp2, "TP2 " + str.tostring(buy_tp2, format.mintick), color=color.new(color.green, 20), style=label.style_label_left, textcolor=color.white, size=size.small)
                         
-                    json_msg = "{\"action\": \"BUY\", \"symbol\": \"" + syminfo.ticker + "\", \"price\": " + str.tostring(close) + ", \"sl\": " + str.tostring(buy_sl) + ", \"tp1\": " + str.tostring(buy_tp1) + ", \"tp2\": " + str.tostring(buy_tp2) + ", \"size\": " + str.tostring(units_to_buy) + ", \"score\": " + str.tostring(b_score) + "}"
+                    // Send advanced JSON Alert
+                    json_msg = "{\"action\": \"BUY\", \"symbol\": \"" + syminfo.ticker + "\", \"price\": " + str.tostring(close) + ", \"sl\": " + str.tostring(buy_sl) + ", \"tp1\": " + str.tostring(buy_tp1) + ", \"tp2\": " + str.tostring(buy_tp2) + ", \"units\": " + str.tostring(units_to_buy) + ", \"score\": " + str.tostring(b_score) + "}"
                     alert(json_msg, alert.freq_once_per_bar_close)
 
                 if sell_ok
@@ -448,24 +461,35 @@ if barstate.isconfirmed and array.size(active_zones) > 0
                     sell_tp1 = close - (sell_sl - close) * rr_ratio_1
                     sell_tp2 = close - (sell_sl - close) * rr_ratio_2
                     risk_amount = account_bal * (risk_pct / 100.0)
+                    units_to_sell = risk_amount / math.abs(sell_sl - close)
                     
-                    dist = math.abs(sell_sl - close)
-                    units_to_sell = is_forex ? (risk_amount / (dist * 100000)) : (risk_amount / dist)
-                    unit_label = is_forex ? "Lot: " : "Units: "
-                    
-                    lbl_text = "BÁN " + stars + "\n" + unit_label + str.tostring(units_to_sell, "#.##") + "\nVô: " + str.tostring(close, format.mintick)
+                    lbl_text = "BÁN " + stars + "\nKL (Units): " + str.tostring(units_to_sell, "#.##") + "\nĐiểm Vô: " + str.tostring(close, format.mintick)
                     if label_signals
                         label.new(bar_index, high, lbl_text, color=color.red, style=label.style_label_down, textcolor=color.white, size=size.small)
                         
                     if show_sl_tp
-                        line.new(bar_index, sell_sl, bar_index + future_sessions, sell_sl, color=color.new(color.red, 20),   width=1, style=line.style_dashed)
-                        line.new(bar_index, sell_tp1, bar_index + future_sessions, sell_tp1, color=color.new(color.orange, 20), width=1, style=line.style_dashed)
-                        line.new(bar_index, sell_tp2, bar_index + future_sessions, sell_tp2, color=color.new(color.green, 20), width=1, style=line.style_dashed)
-                        label.new(bar_index + future_sessions, sell_sl, "SL " + str.tostring(sell_sl, format.mintick), color=color.new(color.red, 20),   style=label.style_label_left, textcolor=color.white, size=size.small)
-                        label.new(bar_index + future_sessions, sell_tp1, "TP1 " + str.tostring(sell_tp1, format.mintick), color=color.new(color.orange, 20), style=label.style_label_left, textcolor=color.white, size=size.small)
-                        label.new(bar_index + future_sessions, sell_tp2, "TP2 " + str.tostring(sell_tp2, format.mintick), color=color.new(color.green, 20), style=label.style_label_left, textcolor=color.white, size=size.small)
+                        if not na(sl_line)
+                            line.delete(sl_line)
+                        if not na(tp1_line)
+                            line.delete(tp1_line)
+                        if not na(tp2_line)
+                            line.delete(tp2_line)
+                        if not na(sl_label)
+                            label.delete(sl_label)
+                        if not na(tp1_label)
+                            label.delete(tp1_label)
+                        if not na(tp2_label)
+                            label.delete(tp2_label)
+                            
+                        sl_line   := line.new(bar_index, sell_sl, bar_index + future_sessions, sell_sl, color=color.new(color.red, 20),   width=1, style=line.style_dashed)
+                        tp1_line  := line.new(bar_index, sell_tp1, bar_index + future_sessions, sell_tp1, color=color.new(color.orange, 20), width=1, style=line.style_dashed)
+                        tp2_line  := line.new(bar_index, sell_tp2, bar_index + future_sessions, sell_tp2, color=color.new(color.green, 20), width=1, style=line.style_dashed)
+                        sl_label  := label.new(bar_index + future_sessions, sell_sl, "SL " + str.tostring(sell_sl, format.mintick), color=color.new(color.red, 20),   style=label.style_label_left, textcolor=color.white, size=size.small)
+                        tp1_label := label.new(bar_index + future_sessions, sell_tp1, "TP1(BE) " + str.tostring(sell_tp1, format.mintick), color=color.new(color.orange, 20), style=label.style_label_left, textcolor=color.white, size=size.small)
+                        tp2_label := label.new(bar_index + future_sessions, sell_tp2, "TP2 " + str.tostring(sell_tp2, format.mintick), color=color.new(color.green, 20), style=label.style_label_left, textcolor=color.white, size=size.small)
 
-                    json_msg = "{\"action\": \"SELL\", \"symbol\": \"" + syminfo.ticker + "\", \"price\": " + str.tostring(close) + ", \"sl\": " + str.tostring(sell_sl) + ", \"tp1\": " + str.tostring(sell_tp1) + ", \"tp2\": " + str.tostring(sell_tp2) + ", \"size\": " + str.tostring(units_to_sell) + ", \"score\": " + str.tostring(s_score) + "}"
+                    // Send advanced JSON Alert
+                    json_msg = "{\"action\": \"SELL\", \"symbol\": \"" + syminfo.ticker + "\", \"price\": " + str.tostring(close) + ", \"sl\": " + str.tostring(sell_sl) + ", \"tp1\": " + str.tostring(sell_tp1) + ", \"tp2\": " + str.tostring(sell_tp2) + ", \"units\": " + str.tostring(units_to_sell) + ", \"score\": " + str.tostring(s_score) + "}"
                     alert(json_msg, alert.freq_once_per_bar_close)
 
             array.set(active_zones, i, z)
@@ -491,60 +515,41 @@ if barstate.isconfirmed
 bgcolor_color = show_trend_bg ? (bull_streak >= trend_confirm_bars ? color.new(color.teal, 92) : bear_streak >= trend_confirm_bars ? color.new(color.red, 92) : na) : na
 bgcolor(bgcolor_color, title="Trend Background")
 
-plotshape(show_trend_signals and trend_buy_signal,  title="Trending Buy",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.aqua, 0),   size=size.small, text="▲ TĂNG",  textcolor=color.aqua)
-plotshape(show_trend_signals and trend_sell_signal, title="Trending Sell", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="▼ GIẢM", textcolor=color.orange)
+plotshape(show_trend_signals and trend_buy_signal,  title="Trending Buy",  style=shape.triangleup,   location=location.belowbar, color=color.new(color.aqua, 0),   size=size.small, text="▲ TĂNG TREND",  textcolor=color.aqua)
+plotshape(show_trend_signals and trend_sell_signal, title="Trending Sell", style=shape.triangledown, location=location.abovebar, color=color.new(color.orange, 0), size=size.small, text="▼ GIẢM TREND", textcolor=color.orange)
 
 // =====================================================
-// 9) FUTURE PREDICTION + UPGRADED WIN-RATE ENGINE
+// 9) FUTURE PREDICTION + WIN-RATE ENGINE
 // =====================================================
-// Pre-calculate lowest/highest for SL check
-lowest_future  = ta.lowest(low, math.max(1, future_sessions))
-highest_future = ta.highest(high, math.max(1, future_sessions))
-
 if barstate.isconfirmed
     if buy_signal or trend_buy_signal
         last_signal_type  := "BUY"
         last_signal_price := close
         array.push(wr_bars, bar_index)
         array.push(wr_prices, close)
-        array.push(wr_sls, close - atr_value * sl_atr_mult)
         array.push(wr_dirs, 1)
     else if sell_signal or trend_sell_signal
         last_signal_type  := "SELL"
         last_signal_price := close
         array.push(wr_bars, bar_index)
         array.push(wr_prices, close)
-        array.push(wr_sls, close + atr_value * sl_atr_mult)
         array.push(wr_dirs, -1)
 
     if array.size(wr_bars) > 0
         for j = array.size(wr_bars) - 1 to 0
             sig_bar   = array.get(wr_bars,   j)
             sig_price = array.get(wr_prices, j)
-            sig_sl    = array.get(wr_sls,    j)
             sig_dir   = array.get(wr_dirs,   j)
-            
-            bars_passed = bar_index - sig_bar
-            if bars_passed == future_sessions
-                // Lỗ hổng đã được vá: Kiểm tra giá có quét Stop Loss trong thời gian future_sessions hay không
-                sl_hit = false
-                if sig_dir == 1 and lowest_future <= sig_sl
-                    sl_hit := true
-                else if sig_dir == -1 and highest_future >= sig_sl
-                    sl_hit := true
-
-                won = not sl_hit and (sig_dir == 1 ? close > sig_price : close < sig_price)
-                
+            if bar_index - sig_bar >= future_sessions
+                won = sig_dir == 1 ? close > sig_price : close < sig_price
                 if winrate_source != "Sell Only" and sig_dir == 1
                     buy_total := buy_total + 1
                     buy_wins  := won ? buy_wins + 1 : buy_wins
                 if winrate_source != "Buy Only" and sig_dir == -1
                     sell_total := sell_total + 1
                     sell_wins  := won ? sell_wins + 1 : sell_wins
-                    
                 array.remove(wr_bars,   j)
                 array.remove(wr_prices, j)
-                array.remove(wr_sls,    j)
                 array.remove(wr_dirs,   j)
 
 if barstate.islast and show_future_pred and last_signal_type != "NONE"
@@ -563,7 +568,7 @@ if barstate.islast and show_future_pred and last_signal_type != "NONE"
     total_samples = winrate_source == "Buy Only" ? buy_total : winrate_source == "Sell Only" ? sell_total : buy_total + sell_total
     total_wins    = winrate_source == "Buy Only" ? buy_wins  : winrate_source == "Sell Only" ? sell_wins  : buy_wins + sell_wins
     wr_pct      = total_samples >= winrate_min_samples ? math.round((total_wins / total_samples) * 100) : -1
-    wr_acc_str  = wr_pct >= 0 ? ("\n🎯 Tỉ Lệ Thắng (Chuẩn SL): " + str.tostring(wr_pct) + "% (" + str.tostring(total_wins) + "/" + str.tostring(total_samples) + ")") : ("\n📊 Win-rate: Đang đo (< " + str.tostring(winrate_min_samples) + " lệnh)")
+    wr_acc_str  = wr_pct >= 0 ? ("\n🎯 Tỉ Lệ Thắng: " + str.tostring(wr_pct) + "% (" + str.tostring(total_wins) + "/" + str.tostring(total_samples) + ")") : ("\n📊 Win-rate: Đang đo (< " + str.tostring(winrate_min_samples) + " lệnh)")
     wr_str      = show_winrate_label ? wr_acc_str : ""
     wr_color    = wr_pct >= 60 ? color.new(color.lime, 0) : wr_pct >= 40 ? color.new(color.yellow, 0) : wr_pct >= 0 ? color.new(color.red, 0) : color.new(color.gray, 0)
 
@@ -617,7 +622,7 @@ if barstate.islast
     table.cell(stats_table, 1, 3, vol_ratio_str, bgcolor=vol_row_col, text_color=color.white)
 
     // [5] Dải BB
-    bb_pos_pct = (bb_upper - bb_lower) == 0 ? 50 : (close - bb_lower) / (bb_upper - bb_lower) * 100
+    bb_pos_pct = (close - bb_lower) / (bb_upper - bb_lower) * 100
     bb_pos_str = bb_pos_pct <= 20 ? "Chạm Đáy (" + str.tostring(math.round(bb_pos_pct, 1)) + "%)" : bb_pos_pct >= 80 ? "Đu Đỉnh (" + str.tostring(math.round(bb_pos_pct, 1)) + "%)" : "Nhập Nhằng (" + str.tostring(math.round(bb_pos_pct, 1)) + "%)"
     bb_row_col = bb_pos_pct <= 20 ? color.new(#089981, 20) : bb_pos_pct >= 80 ? color.new(#F23645, 20) : color.new(color.gray, 20)
     table.cell(stats_table, 0, 4, "[5] dải Bollinger", bgcolor=color.black, text_color=color.white)

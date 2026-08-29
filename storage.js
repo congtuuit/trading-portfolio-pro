@@ -40,7 +40,12 @@ export async function getSettings() {
         tgToken: '',
         tgChatId: '',
         tgEnabled: false,
-        lookbackPeriods: 20
+        lookbackPeriods: 20,
+        theme: 'default',
+        accountBalance: 100000000,
+        riskPercent: 2.0,
+        tradingStyle: 'swing',
+        riskLevel: 'trung bình'
       });
     });
   });
@@ -184,3 +189,26 @@ export async function getSystemLogs() {
   const data = await chrome.storage.local.get("tpp_logs");
   return data.tpp_logs || [];
 }
+
+// ── Caught Signals ──
+export async function getCaughtSignals() {
+  const data = await chrome.storage.local.get("tpp_caught_signals");
+  return data.tpp_caught_signals || [];
+}
+
+export async function saveCaughtSignals(signals) {
+  // Giữ lại 50 tín hiệu gần nhất
+  const limitedSignals = signals.slice(0, 50);
+  await chrome.storage.local.set({ tpp_caught_signals: limitedSignals });
+}
+
+// ── Ranked Scan Results (persist score/grade/win rate/breakout) ──
+export async function saveRankedResults(results) {
+  await chrome.storage.local.set({ tpp_ranked_results: results });
+}
+
+export async function getRankedResults() {
+  const data = await chrome.storage.local.get("tpp_ranked_results");
+  return data.tpp_ranked_results || [];
+}
+
