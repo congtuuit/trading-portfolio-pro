@@ -63,12 +63,12 @@ export async function screenPotentialStocks(rawStocks, targetProfit, settings, a
     const riskLabel = profile.risk_level === "cao" ? "CHẤP NHẬN RỦI RO CAO (ưu tiên lợi nhuận, chấp nhận biến động mạnh)" :
       profile.risk_level === "thấp" ? "AN TOÀN (ưu tiên bảo toàn vốn)" : "TRUNG BÌNH (cân bằng rủi ro-lợi nhuận)";
 
-    // 2. Build compact but enriched data
+    // 2. Build compact but enriched data with anti-overbought indicators
     const compactData = rawStocks.map(s => ({
-      s: s.s,
-      p: s.p,
-      c: s.c,
-      v: s.v,
+      s: s.s || s.symbol,
+      p: s.p || s.price,
+      c: s.c || s.changePercent,
+      v: s.v || s.volume,
       rsi: s.rsi,
       atr: s.atr,
       e20: s.e20,
@@ -76,6 +76,9 @@ export async function screenPotentialStocks(rawStocks, targetProfit, settings, a
       e200: s.e200,
       bl: s.bl,
       bu: s.bu,
+      bbp: s.bbp !== undefined ? s.bbp : (s.bu - s.bl > 0 ? Math.round(((s.p - s.bl) / (s.bu - s.bl)) * 100) : 50),
+      ed20: s.ed20 !== undefined ? s.ed20 : (s.e20 > 0 ? parseFloat((((s.p - s.e20) / s.e20) * 100).toFixed(1)) : 0),
+      up: s.up !== undefined ? s.up : (s.bu > s.p ? parseFloat((((s.bu - s.p) / s.p) * 100).toFixed(1)) : 0),
       m: s.m,
       vr: s.vr,
       sc: s.sc,
@@ -90,10 +93,15 @@ ${cleanedData}
 
 Hồ sơ NĐT: ${styleLabel} | ${riskLabel}
 
-Yêu cầu: Phân tích kỹ thuật (xu hướng EMA, động lượng RSI/MACD, volume) để chọn các đồng coin phù hợp nhất với hồ sơ trên.
-- Lướt sóng: RSI 50-70, volume đột biến, giá>EMA20, R:R>=1.5
-- Swing: giá>EMA20>EMA50, MACD tăng, volume ổn định, R:R>=2
-- Dài hạn: giá>EMA200, vào tại BB lower/EMA50, R:R>=2
+QUY TẮC CHỌN LỌC KỸ THUẬT (CHỐNG ĐU ĐỈNH / QUÁ MUA):
+1. TUYỆT ĐỐI KHÔNG CHỌN:
+   - Coin đã chạm hoặc vượt dải trên Bollinger Bands (bbp >= 90 hoặc up < 3%).
+   - Coin bị kéo giãn quá xa đường EMA20 (ed20 > 6.0%).
+   - Coin có RSI quá mua nghiêm trọng (rsi > 75).
+   - Coin có MACD suy yếu/cắt xuống (m = "DOWN") trừ khi đang bật nảy tại hỗ trợ cứng EMA200/BB Lower.
+2. ƯU TIÊN CHỌN VÙNG MUA AN TOÀN (Sweet Buy Zone):
+   - Coin Pullback lành mạnh về gần EMA20/EMA50 (ed20 từ -2% đến +3%), RSI 45-62, bbp từ 25-70, MACD tăng (m = "UP"), dư địa tăng up >= 8%.
+   - Tỷ lệ Lợi nhuận / Rủi ro (R:R) tối thiểu đạt 1:2.
 
 Lưu ý quan trọng về giá: Các mức giá vào (e), mục tiêu (t), cắt lỗ (sl) phải khớp với định dạng giá thực tế của coin đó trong danh sách (Ví dụ: BTCUSDT là 63906, SOLUSDT là 75.09, PEPEUSDT là 0.0000085). Không được nhân hay chia giá cho 1000.
 
@@ -105,13 +113,19 @@ ${cleanedData}
 
 Hồ sơ NĐT: ${styleLabel} | ${riskLabel}
 
-Yêu cầu: Phân tích kỹ thuật (xu hướng EMA, động lượng RSI/MACD, volume) để chọn CP phù hợp nhất với hồ sơ trên.
-- Lướt sóng: RSI 50-70, volume đột biến, giá>EMA20, R:R>=1.5
-- Swing: giá>EMA20>EMA50, MACD tăng, volume ổn định, R:R>=2
-- Dài hạn: giá>EMA200, vào tại BB lower/EMA50, R:R>=2
+QUY TẮC CHỌN LỌC KỸ THUẬT (CHỐNG ĐU ĐỈNH / QUÁ MUA):
+1. TUYỆT ĐỐI KHÔNG CHỌN:
+   - Cổ phiếu đã chạm hoặc vượt dải trên Bollinger Bands (bbp >= 85 hoặc dư địa up < 2.5%).
+   - Cổ phiếu bị kéo giãn quá xa đường EMA20 (ed20 > 3.5%).
+   - Cổ phiếu có RSI quá mua (rsi > 68 với Swing/Dài hạn, rsi > 75 với Lướt sóng).
+   - Cổ phiếu có MACD cắt xuống (m = "DOWN") trừ khi đang ở hỗ trợ cứng EMA200/BB Lower và bật tăng.
+2. ƯU TIÊN CHỌN VÙNG MUA VÀNG (Sweet Buy Zone / Healthy Pullback):
+   - Cổ phiếu Pullback hoặc tích lũy lành mạnh sát EMA20/EMA50 (ed20 từ -1% đến +2%), RSI 48-60, bbp 30-70, MACD hướng lên (m = "UP"), còn nhiều dư địa tăng (up >= 5%).
+   - Thiết lập giao dịch có tỷ lệ Risk/Reward (R:R) tối thiểu 1:2.
 
 CHỈ trả về JSON array thuần (KHÔNG markdown, KHÔNG giải thích):
 [{"s":"Mã","r":"Lý do ngắn gọn","sc":8.5,"d":"3-5","e":14500,"t":16000,"sl":13800,"w":75}]`;
+
 
     const systemPrompt = isCrypto ?
       `Chuyên gia PTKT Crypto, phong cách ${profile.trading_style}, khẩu vị ${profile.risk_level}. Output: JSON array thuần, không markdown, không text thừa.` :
@@ -446,7 +460,7 @@ async function queryGemini(messages, model, apiKey, systemPrompt) {
     },
     generationConfig: {
       temperature: 0.1,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192,
       topP: 0.8,
       topK: 40
     },

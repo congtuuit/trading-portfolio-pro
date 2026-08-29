@@ -281,26 +281,40 @@ export async function scanCryptoCoins() {
 }
 
 /**
- * Clean up scanner data to minimize tokens for AI.
+ * Clean up scanner data to minimize tokens for AI while providing crucial anti-overbought signals.
  */
 export function prepareDataForAI(rawStocks) {
-  return rawStocks.map(s => ({
-    s: s.symbol || "UNK",
-    p: s.price || 0,
-    c: (s.changePercent || 0).toFixed(2),
-    v: ((s.volume || 0) / 1000000).toFixed(1) + "M",
-    rsi: Math.round(s.rsi || 0),
-    atr: (s.atr || 0).toFixed(2),
-    e20: s.ema20 ? Math.round(s.ema20) : 0,
-    e50: s.ema50 ? Math.round(s.ema50) : 0,
-    e200: s.ema200 ? Math.round(s.ema200) : 0,
-    bl: s.bb_lower ? Math.round(s.bb_lower) : 0,
-    bu: s.bb_upper ? Math.round(s.bb_upper) : 0,
-    m: (s.macd || 0) > (s.macdSignal || 0) ? "UP" : "DOWN",
-    vr: s.avgVolume10d > 0 ? (s.volume / s.avgVolume10d).toFixed(1) : "0.0",
-    hi: s.high ? Math.round(s.high) : 0,
-    lo: s.low ? Math.round(s.low) : 0,
-    sc: s._score || 0,
-    g: s._grade || "N/A"
-  }));
+  return rawStocks.map(s => {
+    const p = s.price || 0;
+    const bl = s.bb_lower ? Math.round(s.bb_lower) : 0;
+    const bu = s.bb_upper ? Math.round(s.bb_upper) : 0;
+    const bbRange = bu - bl;
+    const bbp = bbRange > 0 ? Math.round(((p - bl) / bbRange) * 100) : 50;
+    const ed20 = s.ema20 ? parseFloat((((p - s.ema20) / s.ema20) * 100).toFixed(1)) : 0;
+    const up = bu > p ? parseFloat((((bu - p) / p) * 100).toFixed(1)) : 0;
+
+    return {
+      s: s.symbol || s.s || s.name || "UNK",
+      p: p,
+      c: (s.changePercent || 0).toFixed(2),
+      v: ((s.volume || 0) / 1000000).toFixed(1) + "M",
+      rsi: Math.round(s.rsi || 0),
+      atr: (s.atr || 0).toFixed(2),
+      e20: s.ema20 ? Math.round(s.ema20) : 0,
+      e50: s.ema50 ? Math.round(s.ema50) : 0,
+      e200: s.ema200 ? Math.round(s.ema200) : 0,
+      bl: bl,
+      bu: bu,
+      bbp: bbp,      // % vị trí trong Bollinger Bands (0-100)
+      ed20: ed20,    // % khoảng cách từ giá tới EMA20 (VD: +1.2)
+      up: up,        // % dư địa tăng tới cản dải trên BB (VD: +6.5)
+      m: (s.macd || 0) > (s.macdSignal || 0) ? "UP" : "DOWN",
+      vr: s.avgVolume10d > 0 ? (s.volume / s.avgVolume10d).toFixed(1) : "0.0",
+      hi: s.high ? Math.round(s.high) : 0,
+      lo: s.low ? Math.round(s.low) : 0,
+      sc: s._score || 0,
+      g: s._grade || "N/A"
+    };
+  });
 }
+
