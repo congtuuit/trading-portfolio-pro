@@ -1405,36 +1405,43 @@ export function bindFormEvents(onSave, root = document) {
         const data = dataMap[sym];
 
         if (!data || data.close === 0) {
-          showError("err-symbol", `❌ Không tìm thấy mã ${sym}`);
+          showError("err-symbol", `❌ Không tìm thấy mã "${sym}". Mẹo: Với Crypto, bạn có thể nhập "BINANCE:ETHUSDT" hoặc "COINBASE:ETHUSD".`);
           return;
         }
 
-        const divisor = getDivisor(sym);
+        // Auto-standardize symbol if user entered raw ticker (e.g. ETHUSD -> BINANCE:ETHUSDT)
+        if (data.symbol && data.symbol !== sym && !sym.includes(":")) {
+          symIn.value = data.symbol;
+        }
+
+        const effectiveSym = symIn.value.trim().toUpperCase();
+        const divisor = getDivisor(effectiveSym);
 
         const currentPrice = data.close / divisor;
         const atr = (data.atr || 0) / divisor;
+        const precision = currentPrice < 1 ? 4 : (currentPrice < 10 ? 3 : 2);
 
         // Auto-fill entry price
-        root.querySelector("#inp-entry").value = currentPrice;
+        root.querySelector("#inp-entry").value = Number(currentPrice.toFixed(precision));
 
         // Auto-fill SL / TP based on ATR
         if (atr > 0) {
           const sl_atr_mult = 1.5;
           const rr_ratio = 2.0;
           if (typeSelect.value === "BUY") {
-            const sl = currentPrice - atr * sl_atr_mult;
+            const sl = Math.max(0, currentPrice - atr * sl_atr_mult);
             const tp = currentPrice + (currentPrice - sl) * rr_ratio;
-            root.querySelector("#inp-sl").value = sl.toFixed(2);
-            root.querySelector("#inp-tp").value = tp.toFixed(2);
+            root.querySelector("#inp-sl").value = Number(sl.toFixed(precision));
+            root.querySelector("#inp-tp").value = Number(tp.toFixed(precision));
           } else {
             const sl = currentPrice + atr * sl_atr_mult;
-            const tp = currentPrice - (sl - currentPrice) * rr_ratio;
-            root.querySelector("#inp-sl").value = sl.toFixed(2);
-            root.querySelector("#inp-tp").value = tp.toFixed(2);
+            const tp = Math.max(0, currentPrice - (sl - currentPrice) * rr_ratio);
+            root.querySelector("#inp-sl").value = Number(sl.toFixed(precision));
+            root.querySelector("#inp-tp").value = Number(tp.toFixed(precision));
           }
         }
 
-        lastAnalyzedSym = sym;
+        lastAnalyzedSym = effectiveSym;
         lastAnalyzedData = data;
 
         const analysisHtml = getAnalysisHTML(sym, data, typeSelect.value);

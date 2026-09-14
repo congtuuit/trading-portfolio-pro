@@ -1,0 +1,1 @@
+{"nodes":[{"id":"system_overview_history_js","label":"history.js Historical Data Engine","file_type":"code","source_file":"docs/architecture/system_overview.md","source_location":null,"source_url":null,"captured_at":null,"author":null,"contributor":null,"rationale":"Fetches historical OHLCV candle data for Price Action analysis."}],"edges":[],"hyperedges":[]}

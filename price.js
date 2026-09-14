@@ -1,22 +1,77 @@
 /**
- * price.js
- * Price engine abstraction using TradingView Scanner API.
+ * Normalize and generate candidate ticker formats for TradingView Scanner API.
+ * Supports raw symbols (ETHUSD, ETH, BTC, VHM) as well as exchange-prefixed symbols.
+ * @param {string} input 
+ * @returns {string[]} Array of candidate tickers
  */
+export function normalizeSymbolCandidates(input) {
+  if (!input) return [];
+  const sym = input.trim().toUpperCase();
+  if (!sym) return [];
+
+  const candidates = [sym];
+
+  if (sym.includes(":")) {
+    const [exchange, ticker] = sym.split(":");
+    if (exchange === "BINANCE" && ticker.endsWith("USD") && !ticker.endsWith("USDT")) {
+      candidates.push(`BINANCE:${ticker}T`);
+    }
+    if (exchange === "COINBASE" && ticker.endsWith("USDT")) {
+      candidates.push(`COINBASE:${ticker.slice(0, -1)}`);
+    }
+    return [...new Set(candidates)];
+  }
+
+  const cryptos = [
+    "BTC", "ETH", "SOL", "BNB", "XRP", "ADA", "DOGE", "AVAX", "LINK", 
+    "SUI", "NEAR", "APT", "DOT", "MATIC", "PEPE", "SHIB", "LTC", "BCH", 
+    "UNI", "ATOM", "ETC", "FIL", "TRX", "TON"
+  ];
+
+  let base = sym;
+  let isCryptoLike = false;
+
+  for (const c of cryptos) {
+    if (sym === c || sym.startsWith(c)) {
+      base = c;
+      isCryptoLike = true;
+      break;
+    }
+  }
+
+  if (sym.endsWith("USDT") || sym.endsWith("USD") || sym.endsWith("BUSD") || isCryptoLike) {
+    candidates.push(`BINANCE:${base}USDT`);
+    candidates.push(`BINANCE:${sym}`);
+    candidates.push(`COINBASE:${base}USD`);
+    candidates.push(`COINBASE:${sym}`);
+    candidates.push(`BINANCE:${base}USD`);
+    candidates.push(`OKX:${base}USDT`);
+    candidates.push(`BYBIT:${base}USDT`);
+  } else {
+    candidates.push(`HOSE:${sym}`);
+    candidates.push(`HNX:${sym}`);
+    candidates.push(`UPCOM:${sym}`);
+    candidates.push(`BINANCE:${sym}USDT`);
+    candidates.push(`COINBASE:${sym}USD`);
+  }
+
+  return [...new Set(candidates)];
+}
 
 /**
- * Fetch real prices from TradingView Vietnam Scanner.
- * @param {string[]} symbols - Array of format "HOSE:HCM", "HNX:SHS" etc.
- * @returns {Promise<Object>} Map of symbol -> { close, change, change_abs }
+ * Fetch real prices from TradingView Vietnam & Global Scanner.
+ * @param {string[]} symbols - Array of format "HOSE:HCM", "ETHUSD", "BINANCE:ETHUSDT" etc.
+ * @returns {Promise<Object>} Map of symbol -> { symbol, close, change, change_abs, ... }
  */
 export async function fetchPricesMap(symbols) {
   if (!symbols || symbols.length === 0) return {};
 
-  const uniqueSymbols = [...new Set(symbols)];
+  const cleanSymbols = [...new Set(symbols.filter(Boolean))];
 
   // ── CORS Bypass Logic: If in Content Script, proxy via background ──
   if (typeof window !== "undefined" && window.location.protocol !== "chrome-extension:") {
     return new Promise((resolve) => {
-      chrome.runtime.sendMessage({ type: "FETCH_PRICES", symbols: uniqueSymbols }, (res) => {
+      chrome.runtime.sendMessage({ type: "FETCH_PRICES", symbols: cleanSymbols }, (res) => {
         if (chrome.runtime.lastError) {
           console.error("[TPP] Proxy Fetch Error:", chrome.runtime.lastError);
           resolve({});
@@ -29,7 +84,18 @@ export async function fetchPricesMap(symbols) {
     });
   }
 
-  console.log("fetch ", uniqueSymbols);
+  const inputMap = {};
+  const allCandidates = [];
+
+  cleanSymbols.forEach(sym => {
+    const cands = normalizeSymbolCandidates(sym);
+    cands.forEach(c => {
+      if (!inputMap[c]) inputMap[c] = sym;
+      allCandidates.push(c);
+    });
+  });
+
+  const uniqueTickers = [...new Set(allCandidates)];
 
   try {
     const response = await fetch(
@@ -41,29 +107,30 @@ export async function fetchPricesMap(symbols) {
         },
         body: JSON.stringify({
           symbols: {
-            tickers: uniqueSymbols,
+            tickers: uniqueTickers,
             query: { types: [] },
           },
           columns: [
-          "close",
-          "change",
-          "change_abs",
-          "RSI",
-          "EMA20",
-          "EMA50",
-          "EMA200",
-          "BB.lower",
-          "BB.upper",
-          "ATR",
-          "high",
-          "low",
-          "volume",
-          "average_volume_10d_calc",
-          "MACD.macd",
-          "MACD.signal"
-        ],
-      }),
-    });
+            "close",
+            "change",
+            "change_abs",
+            "RSI",
+            "EMA20",
+            "EMA50",
+            "EMA200",
+            "BB.lower",
+            "BB.upper",
+            "ATR",
+            "high",
+            "low",
+            "volume",
+            "average_volume_10d_calc",
+            "MACD.macd",
+            "MACD.signal"
+          ],
+        }),
+      }
+    );
 
     if (!response.ok) {
       console.error("[TPP] Scanner API Error:", response.status);
@@ -77,7 +144,8 @@ export async function fetchPricesMap(symbols) {
       json.data.forEach((item) => {
         const sym = item.s;
         const [close, change, change_abs, rsi, ema20, ema50, ema200, bb_lower, bb_upper, atr, high, low, vol, vol_avg, macd, macd_signal] = item.d;
-        result[sym] = {
+        const priceData = {
+          symbol: sym,
           close: close || 0,
           change: change || 0,
           change_abs: change_abs || 0,
@@ -95,6 +163,14 @@ export async function fetchPricesMap(symbols) {
           macd: macd || 0,
           macd_signal: macd_signal || 0
         };
+
+        result[sym] = priceData;
+
+        // Also map to the original input ticker so lookups with input symbol succeed!
+        const orig = inputMap[sym];
+        if (orig && !result[orig]) {
+          result[orig] = priceData;
+        }
       });
     }
 
@@ -117,6 +193,8 @@ export async function fetchDeepResearchData(symbol) {
     });
   }
 
+  const candidates = normalizeSymbolCandidates(symbol);
+
   try {
     const response = await fetch(
       "https://scanner.tradingview.com/global/scan",
@@ -124,7 +202,7 @@ export async function fetchDeepResearchData(symbol) {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
         body: JSON.stringify({
-          symbols: { tickers: [symbol], query: { types: [] } },
+          symbols: { tickers: candidates, query: { types: [] } },
           columns: [
             "close", "change", "RSI", "EMA20", "EMA50", "EMA200", 
             "MACD.macd", "MACD.signal", "volume", 
@@ -140,8 +218,10 @@ export async function fetchDeepResearchData(symbol) {
     const json = await response.json();
     if (!json.data || json.data.length === 0) return null;
 
-    const d = json.data[0].d;
+    const matched = json.data[0];
+    const d = matched.d;
     return {
+      symbol: matched.s,
       close: d[0],
       change: d[1],
       rsi: d[2],
@@ -165,3 +245,4 @@ export async function fetchDeepResearchData(symbol) {
     return null;
   }
 }
+

@@ -1,0 +1,166 @@
+{
+  "D:/git/trading-portfolio-pro/ai.js": {
+    "mtime": 1788004361171.2913,
+    "hash": "ec42406a74d47f8a45254c88dcbf1a70"
+  },
+  "D:/git/trading-portfolio-pro/analysis.js": {
+    "mtime": 1775646347855.6147,
+    "hash": "a00bda7cb18ee615d0aead6da514b206"
+  },
+  "D:/git/trading-portfolio-pro/app.js": {
+    "mtime": 1788004361175.2925,
+    "hash": "69091a721e321d7a701ad7a3bfe75b41"
+  },
+  "D:/git/trading-portfolio-pro/background.js": {
+    "mtime": 1788004361177.8032,
+    "hash": "e492c5833fba1612e69362fbd095c30d"
+  },
+  "D:/git/trading-portfolio-pro/content-loader.js": {
+    "mtime": 1788004361181.8064,
+    "hash": "1fe5dfae79acc17d22026b7553dfe035"
+  },
+  "D:/git/trading-portfolio-pro/content.js": {
+    "mtime": 1788004361186.1191,
+    "hash": "22f941758a72eec6679be25f0781e717"
+  },
+  "D:/git/trading-portfolio-pro/mcp.js": {
+    "mtime": 1788004361226.3943,
+    "hash": "372bbcaf7d4f6704f902480908af126c"
+  },
+  "D:/git/trading-portfolio-pro/pnl.js": {
+    "mtime": 1775627082000,
+    "hash": "ba30b50edbdf16b7166c7baa353025ce"
+  },
+  "D:/git/trading-portfolio-pro/popup.js": {
+    "mtime": 1776753486368.464,
+    "hash": "3e085467ac2093f77eae1bc922ac1847"
+  },
+  "D:/git/trading-portfolio-pro/price.js": {
+    "mtime": 1788005191759.5796,
+    "hash": "7e3ca54bbcb5d1df6908f8eaa217ed6a"
+  },
+  "D:/git/trading-portfolio-pro/refactor_ui.js": {
+    "mtime": 1776753259314.8506,
+    "hash": "2093ac04bf1a058da2c2b0af389f0121"
+  },
+  "D:/git/trading-portfolio-pro/scanner_data.js": {
+    "mtime": 1788004361270.723,
+    "hash": "465cc86a34c12aed392ab80eca76d749"
+  },
+  "D:/git/trading-portfolio-pro/scorer.js": {
+    "mtime": 1788004361276.5588,
+    "hash": "e9af07b21cc0fbb51ad1dc11e9e8f75b"
+  },
+  "D:/git/trading-portfolio-pro/storage.js": {
+    "mtime": 1788004361279.1587,
+    "hash": "e65e9c33481c4ab56bf74f7d5580f53c"
+  },
+  "D:/git/trading-portfolio-pro/telegram.js": {
+    "mtime": 1775648614886.5298,
+    "hash": "5ab62e7dc1df05b001f6a23d51c3355a"
+  },
+  "D:/git/trading-portfolio-pro/ui.js": {
+    "mtime": 1788005207241.7793,
+    "hash": "a630565b926b36f2709971edfad573e2"
+  },
+  "D:/git/trading-portfolio-pro/utils.js": {
+    "mtime": 1788004361289.9563,
+    "hash": "e6d1adca30982cc20d26a4fd056a9689"
+  },
+  "D:/git/trading-portfolio-pro/CHANGELOG.md": {
+    "mtime": 1788004361167.1074,
+    "hash": "b2ef68e3a04bd958d75dda27aff309d3"
+  },
+  "D:/git/trading-portfolio-pro/README.md": {
+    "mtime": 1777084802247.6877,
+    "hash": "87edae1312545a0098e4ae897bc206ea"
+  },
+  "D:/git/trading-portfolio-pro/docs/architecture/system_overview.md": {
+    "mtime": 1788004361190.142,
+    "hash": "677f829ad2c99ba9cc5dd56b0d94bc9e"
+  },
+  "D:/git/trading-portfolio-pro/docs/design_spec_audit.md": {
+    "mtime": 1788004361192.1174,
+    "hash": "6ee2e3aec50d335bcd20d4351682e341"
+  },
+  "D:/git/trading-portfolio-pro/docs/plans/260408-1755-tpp-v2/phase-01-t0-strategy.md": {
+    "mtime": 1788004361194.1184,
+    "hash": "7af8363d8b884bf39db5bab99a82ee7d"
+  },
+  "D:/git/trading-portfolio-pro/docs/plans/260408-1755-tpp-v2/phase-02-smart-analysis.md": {
+    "mtime": 1788004361195.1172,
+    "hash": "1dcb8361ee2cf9219bc7644f0e6637ff"
+  },
+  "D:/git/trading-portfolio-pro/docs/plans/260408-1755-tpp-v2/phase-03-proactive-ai.md": {
+    "mtime": 1788004361199.2693,
+    "hash": "c6beeffca77f3c17a2a42352f360e28c"
+  },
+  "D:/git/trading-portfolio-pro/docs/plans/260408-1755-tpp-v2/phase-04-ui-dashboard.md": {
+    "mtime": 1788004361202.03,
+    "hash": "af7ca606de3020a09ec0dcd2fcfd8198"
+  },
+  "D:/git/trading-portfolio-pro/docs/plans/260408-1755-tpp-v2/plan.md": {
+    "mtime": 1788004361203.6687,
+    "hash": "16d96d17b07c74e9143a32f4af2fc599"
+  },
+  "D:/git/trading-portfolio-pro/docs/plans/260428-1952-ai-advisor-screener/phase-01-setup-data.md": {
+    "mtime": 1788004361208.6814,
+    "hash": "42dbd3e492cc10e58297cd2427edf37d"
+  },
+  "D:/git/trading-portfolio-pro/docs/plans/260428-1952-ai-advisor-screener/phase-02-ai-screener.md": {
+    "mtime": 1788004361209.936,
+    "hash": "c48f7b38392e8bb253c5850f99c93dff"
+  },
+  "D:/git/trading-portfolio-pro/docs/plans/260428-1952-ai-advisor-screener/phase-03-ai-advisor.md": {
+    "mtime": 1788004361209.936,
+    "hash": "d5a90eec1144f6852042edf0bc7c3450"
+  },
+  "D:/git/trading-portfolio-pro/docs/plans/260428-1952-ai-advisor-screener/plan.md": {
+    "mtime": 1788004361209.936,
+    "hash": "c27125bf231d9a2c14f7efe5200670b0"
+  },
+  "D:/git/trading-portfolio-pro/docs/plans/260429-1340-ui-themes/plan.md": {
+    "mtime": 1788004361209.936,
+    "hash": "d7fc2d8883629ee78ce426bf6feb924c"
+  },
+  "D:/git/trading-portfolio-pro/docs/specs/ai_advisor_spec.md": {
+    "mtime": 1777380753606.9895,
+    "hash": "12fc4b2d0f9b62dfe29f10dcce7cf9eb"
+  },
+  "D:/git/trading-portfolio-pro/docs/specs/ai_deep_research_spec.md": {
+    "mtime": 1788004361217.1616,
+    "hash": "6a5e37bcef6d6b41e80bc5932837d7ff"
+  },
+  "D:/git/trading-portfolio-pro/pipescripts/readme.txt": {
+    "mtime": 1776746738304.7524,
+    "hash": "5cbf88681b00ebff2545d49b5833052a"
+  },
+  "D:/git/trading-portfolio-pro/pipescripts/v1/readme.txt": {
+    "mtime": 1788004361238.2058,
+    "hash": "5cbf88681b00ebff2545d49b5833052a"
+  },
+  "D:/git/trading-portfolio-pro/pipescripts/v5.4/HUONG-DAN-SU-DUNG.md": {
+    "mtime": 1788004361246.0657,
+    "hash": "c700f39543048df0f1df8623d0782f7b"
+  },
+  "D:/git/trading-portfolio-pro/pipescripts/v5.5/HUONG-DAN-SU-DUNG.md": {
+    "mtime": 1788004361252.5327,
+    "hash": "016cdc869a5e309dd85d7c50a00e9a02"
+  },
+  "D:/git/trading-portfolio-pro/pipescripts/v5/HUONG-DAN-SU-DUNG.md": {
+    "mtime": 1788004361257.473,
+    "hash": "805512d396660b9e75f7d762d9e7f407"
+  },
+  "D:/git/trading-portfolio-pro/popup.html": {
+    "mtime": 1788004361263.5,
+    "hash": "1cd5cb77c8f25fa7c4165697d1c1e36d"
+  },
+  "D:/git/trading-portfolio-pro/icons/tradingview-logo.png": {
+    "mtime": 1775627082000,
+    "hash": "ef84b9a55d19cbb3cddc582125a51ac0"
+  },
+  "D:/git/trading-portfolio-pro/CLAUDE.md": {
+    "mtime": 1789372198957.9766,
+    "hash": "2cb55bcb6303cc80bd68c246fb9891dc"
+  }
+}
