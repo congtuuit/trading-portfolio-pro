@@ -14,6 +14,7 @@ import { getDivisor } from "./utils.js";
 import { sendTelegramMessage } from "./telegram.js";
 import { suggestEntryExit } from "./analysis.js";
 import { scanVietnamStocks, scanCryptoCoins } from "./scanner_data.js";
+import { directSyncFetch } from "./sheets_sync.js";
 
 const MONITOR_ALARM = "tpp_monitor_alarm";
 const MONITOR_INTERVAL_MINS = 10;
@@ -215,6 +216,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         addSystemLog('ERROR', 'SCAN_CRYPTO Failed (Sync)', err.message);
         sendResponse({ success: false, error: err.message });
       }
+      return true;
+
+    case "SYNC_SHEETS_TEST":
+    case "SYNC_SHEETS_PULL":
+    case "SYNC_SHEETS_PUSH":
+      addSystemLog('API', `${message.type} Request`, { url: message.url, itemCount: message.portfolio?.length });
+      directSyncFetch(message.type, message)
+        .then(data => {
+          addSystemLog('API', `${message.type} Response`, data);
+          sendResponse(data);
+        })
+        .catch(err => {
+          addSystemLog('ERROR', `${message.type} Failed`, err.message);
+          sendResponse({ success: false, error: err.message });
+        });
       return true;
 
     default:

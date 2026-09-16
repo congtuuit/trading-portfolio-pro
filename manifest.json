@@ -12,7 +12,9 @@
   },
   "host_permissions": [
     "*://*.tradingview.com/*",
-    "https://api.telegram.org/*"
+    "https://api.telegram.org/*",
+    "https://script.google.com/*",
+    "https://script.googleusercontent.com/*"
   ],
   "background": {
     "service_worker": "background.js",
@@ -39,6 +41,7 @@
         "ui.js",
         "utils.js",
         "storage.js",
+        "sheets_sync.js",
         "price.js",
         "pnl.js",
         "analysis.js",
