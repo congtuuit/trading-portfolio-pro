@@ -1,107 +1,167 @@
 {
-  "meta": { "schema_version": "1.2.0", "awf_version": "4.0.2" },
-  "project": { 
-    "name": "Trading Portfolio Pro", 
-    "type": "Chrome Extension (MV3)", 
-    "status": "Active Development" 
+  "meta": {
+    "schema_version": "1.3.0",
+    "awf_version": "4.1.0",
+    "last_updated": "2026-09-16"
   },
-  "tech_stack": { 
+  "project": {
+    "name": "Trading Portfolio Pro",
+    "type": "Chrome Extension (MV3)",
+    "status": "Active Development (Phase 3)",
+    "description": "Cross-device trading portfolio tracker, real-time PnL calculator, TradingView scanner & assistant with Google Sheets cloud sync."
+  },
+  "tech_stack": {
     "frontend": {
       "ui": "Vanilla HTML/CSS/JS (Theme-aware)",
       "modules": "ES Modules system",
-      "injection": "Shadow DOM for styling isolation",
+      "injection": "Shadow DOM for styling isolation (content.js / content-loader.js)",
       "typography": "Outfit (Primary), Inter (Fallback)"
-    }, 
+    },
     "backend": {
-      "service_worker": "Chrome Background Script",
+      "service_worker": "Chrome Background Script (background.js, type: module)",
       "storage": "chrome.storage.local",
-      "cors_proxy": "Background message passing"
-    }, 
+      "cloud_sync": "Google Apps Script Web App / Google Sheets",
+      "cors_proxy": "Background message passing (FETCH_PRICES, FETCH_DEEP_RESEARCH, SCAN_STOCKS, SCAN_CRYPTO, SYNC_SHEETS_*)"
+    },
     "database": {
-      "type": "Local Storage DB",
-      "format": "JSON structure for portfolio and settings"
-    } 
+      "type": "Local Storage DB + Google Sheets Cloud Mirror",
+      "format": "JSON structure for portfolio, settings, trade history, signals, and scanner caches"
+    }
   },
-  "database_schema": { 
+  "database_schema": {
     "tables": [
       {
         "name": "tpp_portfolio",
-        "columns": ["id", "symbol", "type", "entryPrice", "quantity", "stopLoss", "takeProfit", "note"]
+        "description": "Active open trading positions",
+        "columns": ["id", "symbol", "type", "entryPrice", "quantity", "stopLoss", "takeProfit", "note", "date", "tpAlerted", "slAlerted", "t0Alerted"]
       },
       {
         "name": "tpp_settings",
-        "columns": ["aiProvider", "aiModel", "apiKey", "tgToken", "tgChatId", "tgEnabled", "lookbackPeriods", "theme"]
+        "description": "User configuration & integrations",
+        "columns": [
+          "aiProvider", "aiModel", "apiKey", "tgToken", "tgChatId", "tgEnabled",
+          "lookbackPeriods", "theme", "accountBalance", "riskPercent", "tradingStyle", "riskLevel",
+          "sheetsUrl", "sheetsAutoPush", "sheetsAutoPull", "sheetsLastSync"
+        ]
+      },
+      {
+        "name": "tpp_trade_history",
+        "description": "Realized closed trades & T0 trade history",
+        "columns": ["id", "date", "symbol", "type", "qtyClosed", "entryPrice", "closePrice", "realizedPnl"]
       },
       {
         "name": "tpp_chat_history",
+        "description": "AI conversational history (limited to 50)",
         "columns": ["role", "text"]
+      },
+      {
+        "name": "tpp_scanner_results",
+        "description": "AI Top Picks scanner results and timestamp",
+        "columns": ["results", "timestamp"]
+      },
+      {
+        "name": "tpp_ranked_results",
+        "description": "Locally scored & ranked scanner candidates",
+        "columns": ["symbol", "close", "change", "score", "grade", "winRate", "breakoutDist"]
+      },
+      {
+        "name": "tpp_caught_signals",
+        "description": "Signals caught from TradingView Pine Script alerts",
+        "columns": ["action", "price", "timestamp", "symbol"]
+      },
+      {
+        "name": "tpp_logs",
+        "description": "System event & API logs",
+        "columns": ["time", "type", "title", "detail"]
       }
-    ], 
-    "relationships": [] 
+    ],
+    "relationships": []
   },
   "api_endpoints": [
+    {
+      "provider": "Google Apps Script Web App",
+      "path": "https://script.google.com/macros/s/.../exec",
+      "method": "GET & POST",
+      "purpose": "2-Way Cross-Device sync for stock and crypto portfolio items with Google Sheets."
+    },
     {
       "provider": "TradingView Scanner",
       "path": "https://scanner.tradingview.com/global/scan",
       "method": "POST",
-      "purpose": "Fetch real-time stock prices and indicators (RSI, BB, EMA200)."
+      "purpose": "Fetch real-time stock/crypto prices, technical indicators, and deep research snapshots."
     },
     {
-      "provider": "TradingView History",
-      "path": "https://history.tradingview.com/history",
-      "method": "GET",
-      "purpose": "Fetch OHLCV historical data (Candlesticks) for Price Action analysis."
+      "provider": "TradingView Vietnam Scan",
+      "path": "https://scanner.tradingview.com/vietnam/scan",
+      "method": "POST",
+      "purpose": "Market scanner for Vietnam stock exchange tickers (HOSE, HNX, UPCOM)."
+    },
+    {
+      "provider": "TradingView Crypto Scan",
+      "path": "https://scanner.tradingview.com/crypto/scan",
+      "method": "POST",
+      "purpose": "Market scanner for major cryptocurrency pairs."
     },
     {
       "provider": "Google Gemini",
       "path": "https://generativelanguage.googleapis.com/v1beta/models/*",
       "method": "POST",
-      "purpose": "AI Chat and DCA analysis"
+      "purpose": "AI screener ranking, detailed symbol advice, deep stock research, and portfolio assistant."
     },
     {
       "provider": "OpenAI",
       "path": "https://api.openai.com/v1/chat/completions",
       "method": "POST",
-      "purpose": "AI Chat and DCA analysis (Alternative)"
+      "purpose": "Alternative AI provider for chat, research, and planning."
     },
     {
-      "provider": "Telegram",
+      "provider": "Telegram Bot API",
       "path": "https://api.telegram.org/bot<token>/sendMessage",
       "method": "POST",
-      "purpose": "Push proactive alerts to user's phone"
+      "purpose": "Push proactive alerts (TP, SL, RSI Oversold T0) and Pine Script signals to user's phone."
     }
   ],
   "business_rules": [
-    "Prices are stored as Full Prices (e.g. 11500) but displayed as Divided Prices (/1000 = 11.5) for VN market.",
-    "Proactive alerts check every 10 minutes (via alarms).",
-    "T0 rule: Mini-trade profits are deducted from original entry price.",
-    "Swing trading recommendations must have a minimum Risk/Reward ratio of 1:2.",
-    "Theme persists across sessions via chrome.storage.local.theme."
+    "Prices are stored as Full Prices (e.g. 115000) but displayed as Divided Prices (/1000 = 115.0) for VN market via getDivisor().",
+    "Crypto and global assets use divisor = 1.",
+    "Proactive monitoring runs every 10 minutes via background alarms when Telegram alerts are enabled.",
+    "T0 rule: Mini-trade profits are deducted from original position entry price to lower cost basis.",
+    "Position Sizing: Risk per trade defaults to 2% of total account balance; formula: Qty = (Balance * Risk%) / |Entry - SL|.",
+    "Swing trading setups must pass a minimum Risk/Reward threshold (default R:R >= 1:2).",
+    "Google Sheets cloud sync pushes updates on trade save/edit/delete/T0/close when sheetsAutoPush is enabled.",
+    "TradingView GoPro dialog suppression enforces opacity: 0 and pointer-events: none via preemptive CSS, MutationObserver, and 250ms polling loop."
   ],
   "features": [
-    "Portfolio Management (CRUD)",
-    "Real-time PnL Tracking",
-    "Floating AI Widget across all websites",
-    "DCA & T0 Scenarios Calculation",
-    "Telegram Alerts (Stop Loss, Take Profit, RSI Oversold)",
-    "Stock Scanner & AI Swing Recommendation (Historical Data Analysis)",
+    "Portfolio Management (CRUD, Position Sizing, Sector Allocation Bar)",
+    "Real-time PnL & Multi-asset Tracker (Stocks & Crypto)",
+    "Cross-Device Cloud Sync via Google Sheets & Apps Script (Pull & Push)",
+    "TradingView Injected Shadow DOM Widget across websites with GoPro ad suppression",
+    "DCA & T0 'Thay nước' Scenarios Calculation",
+    "Multi-market Scanner (VN Stocks & Crypto) with Pine Script v5.5 Confluence Scoring Engine",
+    "Smart Stock Assistant & Portfolio Trading Assistant (Hybrid Quant + AI)",
+    "Telegram Bot Proactive Notifications",
     "Multi-Theme Support: Default, Cyber Pulse (Neon), Crystal Glass (Glassmorphism)"
   ],
-  "knowledge_items": { 
+  "knowledge_items": {
     "patterns": [
       "ES Modules in content script using dynamic import loader (content-loader.js).",
-      "Shadow DOM used for floating widget to encapsulate CSS.",
-      "Event Delegation in ui.js to manage large lists efficiently.",
-      "Theme Engine using CSS Variables and body.theme-* class selectors."
-    ], 
+      "Shadow DOM used for floating widget to encapsulate CSS without affecting host page styles.",
+      "Event Delegation in ui.js to manage dynamic lists cleanly.",
+      "CORS Bypass: Webpage content scripts cannot call external APIs directly; requests must route through background.js via chrome.runtime.sendMessage.",
+      "Hybrid AI Architecture: Calculate all numbers (scores, pivot levels, R:R, position size) locally first, then pass structured context to AI."
+    ],
     "gotchas": [
-      "Cannot use fetch() to TradingView directly in content.js due to CORS restrictions. Must proxy via background.js using chrome.runtime.sendMessage.",
-      "Download anchors must be appended to document.body (not ShadowRoot) to trigger download behavior in all browsers."
-    ], 
+      "Cannot use fetch() to TradingView or Google Apps Script directly in content.js due to page CSP/CORS. Must proxy via background.js.",
+      "POST requests to Google Apps Script Web Apps should use Content-Type: text/plain to prevent CORS preflight redirect failures.",
+      "Download anchors must be appended to document.body (not ShadowRoot) to trigger file downloads in all browsers.",
+      "TradingView GoPro dialogs should be suppressed with opacity: 0 and pointer-events: none (rather than display: none) to avoid triggering TradingView's ad-block re-render handlers.",
+      "ui.js is very large (~1950 lines); new assistant and deep features should be isolated into modular files (e.g. assistant_engine.js, ui_assistant.js) rather than expanding existing god-nodes."
+    ],
     "conventions": [
-      "Use getDivisor() to dynamically adjust price displays without mutating underlying storage.",
-      "Minimize impact on stable modules by extending instead of modifying.",
-      "Export all reusable UI helpers (toggleModal, bindModalClose) to maintain module consistency."
-    ] 
+      "Use getDivisor(symbol) to dynamically adjust price displays without mutating underlying storage.",
+      "Always syntax-check modified modules with `node --check <file>`.",
+      "Preserve existing storage keys in storage.js to maintain backwards compatibility.",
+      "Keep popup.html element IDs in sync with ui.js event binding selectors."
+    ]
   }
 }
