@@ -50,6 +50,16 @@ import {
   pushPortfolioToSheet,
   isValidSheetsUrl
 } from "./sheets_sync.js";
+import {
+  buildSmartStockPlan,
+  detectActiveTradingViewSymbol
+} from "./assistant_engine.js";
+import {
+  renderSmartStockCard,
+  renderAssistantLoading,
+  renderAssistantEmpty,
+  renderAssistantError
+} from "./ui_assistant.js";
 
 const REFRESH_INTERVAL_MS = 30 * 1000;
 
@@ -449,6 +459,7 @@ export async function initApp(root) {
 
   setupCoreBindings();
   setupScannerBindings();
+  setupAssistantBindings();
   setupManagementBindings();
 
   updatePricesAndRender();
@@ -508,6 +519,150 @@ export async function initApp(root) {
         root.querySelector("#ai-top-picks").style.display = "none";
       }
     });
+  }
+
+  function setupAssistantBindings() {
+    const inpAssistant = root.querySelector("#inp-assistant-symbol");
+    const btnAnalyze = root.querySelector("#btn-assistant-analyze");
+    const btnDetectTV = root.querySelector("#btn-assistant-detect-tv");
+    const chipsContainer = root.querySelector("#assistant-quick-chips");
+    const cardContainer = root.querySelector("#assistant-card-container");
+
+    if (!inpAssistant || !btnAnalyze || !cardContainer) return;
+
+    renderAssistantEmpty(cardContainer);
+
+    function updateAssistantChips() {
+      if (!chipsContainer) return;
+      const symbols = new Set();
+      portfolio.forEach(t => symbols.add(t.symbol));
+      if (Array.isArray(lastScannedData)) {
+        lastScannedData.slice(0, 6).forEach(s => symbols.add(s.symbol || s.s));
+      }
+
+      const symbolList = Array.from(symbols).filter(Boolean);
+      if (symbolList.length === 0) {
+        chipsContainer.innerHTML = `<span style="color:var(--text-muted); font-size:10px;">Gợi ý: FPT, VHM, HPG, SSI, BTCUSDT</span>`;
+        return;
+      }
+
+      chipsContainer.innerHTML = symbolList.slice(0, 8).map(sym => `
+        <button class="assistant-chip" data-sym="${escapeHTML(sym)}">${escapeHTML(sym.split(':').pop() || sym)}</button>
+      `).join("");
+
+      chipsContainer.querySelectorAll(".assistant-chip").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const sym = btn.dataset.sym;
+          inpAssistant.value = sym;
+          runAssistantAnalysis(sym);
+        });
+      });
+    }
+
+    updateAssistantChips();
+
+    async function runAssistantAnalysis(symbolToAnalyze) {
+      const sym = (symbolToAnalyze || inpAssistant.value || "").trim().toUpperCase();
+      if (!sym) {
+        alert("Vui lòng nhập mã cổ phiếu hoặc bấm Lấy mã từ Chart!");
+        return;
+      }
+
+      inpAssistant.value = sym;
+      renderAssistantLoading(cardContainer, sym);
+      btnAnalyze.disabled = true;
+
+      try {
+        const planData = await buildSmartStockPlan(sym, appSettings || {});
+        renderSmartStockCard(cardContainer, planData, {
+          onApplyToPosition: (plan) => {
+            // Switch to Portfolio Tab
+            const portfolioTabBtn = root.querySelector('.tab-btn[data-target="section-portfolio"]');
+            if (portfolioTabBtn) portfolioTabBtn.click();
+
+            // Populate Add Form
+            root.querySelector("#inp-symbol").value = plan.symbol;
+            root.querySelector("#inp-type").value = "BUY";
+            root.querySelector("#inp-entry").value = plan.displayPrice;
+            root.querySelector("#inp-sl").value = plan.plan.stopLoss.displayPrice;
+            root.querySelector("#inp-tp").value = plan.plan.tp1.displayPrice;
+            root.querySelector("#inp-qty").value = plan.plan.positionSizing.units || 100;
+            root.querySelector("#inp-note").value = `[AI Plan: R:R 1:${plan.plan.rr}] TP1: ${plan.plan.tp1.displayPrice} (${plan.plan.tp1.pct}%) | TP2: ${plan.plan.tp2.displayPrice} (${plan.plan.tp2.pct}%) | SL: ${plan.plan.stopLoss.displayPrice}`;
+
+            // Show Form
+            root.querySelector("#form-section").style.display = "block";
+            root.querySelector("#btn-toggle-form").style.display = "none";
+            root.querySelector("#inp-entry").focus();
+          }
+        });
+      } catch (err) {
+        console.error("[TPP Assistant Error]", err);
+        renderAssistantError(cardContainer, err.message || "Lỗi khi lấy dữ liệu phân tích.");
+      } finally {
+        btnAnalyze.disabled = false;
+      }
+    }
+
+    btnAnalyze.addEventListener("click", () => runAssistantAnalysis());
+
+    inpAssistant.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        runAssistantAnalysis();
+      }
+    });
+
+    if (btnDetectTV) {
+      btnDetectTV.addEventListener("click", () => {
+        const detected = detectActiveTradingViewSymbol();
+        if (detected) {
+          inpAssistant.value = detected;
+          runAssistantAnalysis(detected);
+        } else {
+          // If in extension popup, query active tab
+          if (typeof chrome !== "undefined" && chrome.tabs && chrome.tabs.query) {
+            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+              const activeTab = tabs && tabs[0];
+              if (activeTab && activeTab.url) {
+                try {
+                  const url = new URL(activeTab.url);
+                  const sym = url.searchParams.get("symbol");
+                  if (sym) {
+                    inpAssistant.value = sym;
+                    runAssistantAnalysis(sym);
+                    return;
+                  }
+                  const match = (activeTab.title || "").match(/^([A-Z0-9_:]+)\s+(Chart|Price|Biểu đồ)/i);
+                  if (match && match[1]) {
+                    inpAssistant.value = match[1];
+                    runAssistantAnalysis(match[1]);
+                    return;
+                  }
+                } catch {}
+              }
+              alert("Không phát hiện mã nào trên tab hiện tại. Hãy nhập mã thủ công.");
+            });
+          } else {
+            alert("Không tìm thấy biểu đồ TradingView nào đang mở.");
+          }
+        }
+      });
+    }
+
+    // Auto-detect when switching into Assistant tab
+    const assistantTabBtn = root.querySelector('.tab-btn[data-target="section-assistant"]');
+    if (assistantTabBtn) {
+      assistantTabBtn.addEventListener("click", () => {
+        updateAssistantChips();
+        if (!inpAssistant.value) {
+          const autoSym = detectActiveTradingViewSymbol();
+          if (autoSym) {
+            inpAssistant.value = autoSym;
+            runAssistantAnalysis(autoSym);
+          }
+        }
+      });
+    }
   }
 
   function setupManagementBindings() {

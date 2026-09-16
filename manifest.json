@@ -37,6 +37,8 @@
       "resources": [
         "popup.html",
         "app.js",
+        "assistant_engine.js",
+        "ui_assistant.js",
         "content.js",
         "ui.js",
         "utils.js",

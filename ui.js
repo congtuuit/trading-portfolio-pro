@@ -820,6 +820,22 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
     
     bindModalClose(root, "modal-settings", "btn-close-modal-settings");
 
+    // Modal Guide / Playbook
+    const btnGuide = root.querySelector("#btn-guide");
+    const modalGuide = root.querySelector("#modal-guide");
+    const btnGuideGotIt = root.querySelector("#btn-guide-got-it");
+    if (btnGuide && modalGuide) {
+      btnGuide.addEventListener("click", () => {
+        toggleModal(root, "modal-guide", true);
+      });
+      bindModalClose(root, "modal-guide", "btn-close-modal-guide");
+      if (btnGuideGotIt) {
+        btnGuideGotIt.addEventListener("click", () => {
+          toggleModal(root, "modal-guide", false);
+        });
+      }
+    }
+
     // Modal view & copy Google Apps Script Code
     const btnShowGas = root.querySelector("#btn-show-gas-code");
     const modalGas = root.querySelector("#modal-gas-code");
