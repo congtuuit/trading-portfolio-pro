@@ -44,6 +44,12 @@ import { fetchPricesMap, fetchDeepResearchData } from "./price.js";
 import { queryAI, fetchModels, screenPotentialStocks, getDetailedAdvice, analyzeDeepStock } from "./ai.js";
 import { prepareDataForAI } from "./scanner_data.js";
 import { rankStocks } from "./scorer.js";
+import {
+  testSheetsConnection,
+  pullPortfolioFromSheet,
+  pushPortfolioToSheet,
+  isValidSheetsUrl
+} from "./sheets_sync.js";
 
 const REFRESH_INTERVAL_MS = 30 * 1000;
 
@@ -67,6 +73,16 @@ export async function initApp(root) {
     renderPortfolio(portfolio, handleDelete, handleEdit, currentPriceMap, root);
     updateSummaryBar(portfolio, currentPriceMap, root);
     checkProactiveAlerts();
+  }
+
+  async function maybeAutoPushSheets() {
+    if (appSettings?.sheetsAutoPush && isValidSheetsUrl(appSettings?.sheetsUrl)) {
+      try {
+        await pushPortfolioToSheet(appSettings.sheetsUrl, portfolio);
+      } catch (err) {
+        console.warn("[TPP] Auto push to Sheets failed:", err);
+      }
+    }
   }
 
   function uid() {
@@ -94,6 +110,7 @@ export async function initApp(root) {
 
     await savePortfolio(portfolio);
     updatePricesAndRender();
+    maybeAutoPushSheets();
     return { success: true };
   }
 
@@ -106,6 +123,7 @@ export async function initApp(root) {
     portfolio = portfolio.filter((t) => t.id !== id);
     await savePortfolio(portfolio);
     updatePricesAndRender();
+    maybeAutoPushSheets();
   }
 
   async function handleT0(id, newEntry, realizedProfit) {
@@ -118,6 +136,7 @@ export async function initApp(root) {
       trade.slAlerted = false;
       trade.t0Alerted = false;
       await savePortfolio(portfolio);
+      maybeAutoPushSheets();
 
       if (realizedProfit && realizedProfit > 0) {
         const historyRecord = {
@@ -196,6 +215,7 @@ export async function initApp(root) {
     await savePortfolio(portfolio);
     updatePricesAndRender();
     renderHistory(tradeHistory, root);
+    maybeAutoPushSheets();
   }
 
   async function handleClearHistory() {
@@ -374,6 +394,21 @@ export async function initApp(root) {
 
   portfolio = await getPortfolio();
   appSettings = await getSettings();
+
+  // Tự động kéo dữ liệu từ Google Sheet khi mở Extension (nếu được cấu hình)
+  if (appSettings?.sheetsAutoPull && isValidSheetsUrl(appSettings?.sheetsUrl)) {
+    try {
+      const syncRes = await pullPortfolioFromSheet(appSettings.sheetsUrl);
+      if (syncRes && syncRes.success && Array.isArray(syncRes.data)) {
+        portfolio = syncRes.data;
+        await savePortfolio(portfolio);
+        console.log(`[TPP] Auto-pulled ${portfolio.length} items from Google Sheets on startup`);
+      }
+    } catch (err) {
+      console.warn("[TPP] Startup auto-pull from Sheets failed:", err);
+    }
+  }
+
   tradeHistory = await getTradeHistory();
   const scannerCache = await getScannerResults();
   const rawCache = await getRawScannerResults();
@@ -432,7 +467,24 @@ export async function initApp(root) {
     bindSettingsEvents(appSettings, async (s) => {
       appSettings = s;
       await saveSettings(s);
-    }, fetchModels, root);
+    }, fetchModels, root, {
+      onTestSheets: async (url) => {
+        return await testSheetsConnection(url);
+      },
+      onPullSheets: async (url) => {
+        const res = await pullPortfolioFromSheet(url);
+        if (res && res.success && Array.isArray(res.data)) {
+          portfolio = res.data;
+          await savePortfolio(portfolio);
+          updatePricesAndRender();
+          return { success: true, count: portfolio.length };
+        }
+        return { success: false, error: res?.error || "Không thể kéo dữ liệu từ Sheet" };
+      },
+      onPushSheets: async (url) => {
+        return await pushPortfolioToSheet(url, portfolio);
+      }
+    });
     initExportImport();
   }
 

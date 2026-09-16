@@ -45,7 +45,11 @@ export async function getSettings() {
         accountBalance: 100000000,
         riskPercent: 2.0,
         tradingStyle: 'swing',
-        riskLevel: 'trung bình'
+        riskLevel: 'trung bình',
+        sheetsUrl: '',
+        sheetsAutoPush: false,
+        sheetsAutoPull: false,
+        sheetsLastSync: null
       });
     });
   });

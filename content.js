@@ -175,14 +175,56 @@ async function injectWidget() {
   await initApp(shadow);
 }
 
-// Start MutationObserver for ad blocking and inject widget
-function hideAdsDetectDialog(node) {
-  let el = null;
-  if (node.nodeType === Node.ELEMENT_NODE) {
-    if (node.getAttribute('data-dialog-name') === 'gopro') el = node;
-    else el = node.querySelector('[data-dialog-name="gopro"]');
+// ── TradingView GoPro Dialog & Ad Suppression ──
+
+// 1. Preemptive CSS Injection: Forces opacity 0 at render time
+function injectGoProHidingStyles() {
+  try {
+    const styleId = "tpp-gopro-hide-style";
+    if (!document.getElementById(styleId)) {
+      const style = document.createElement("style");
+      style.id = styleId;
+      style.textContent = `
+        [data-dialog-name="gopro"],
+        div[data-dialog-name="gopro"],
+        [data-dialog-name="gopro-feature-locked"] {
+          opacity: 0 !important;
+          pointer-events: none !important;
+          user-select: none !important;
+        }
+      `;
+      (document.head || document.documentElement).appendChild(style);
+    }
+  } catch (err) {
+    console.warn("[TPP] Failed to inject GoPro hiding style:", err);
   }
-  if (el && el.style.display !== "none") el.style.display = "none";
+}
+injectGoProHidingStyles();
+
+// 2. Element Processor: Sets opacity to 0 and disables pointer events
+function setGoProElementOpacityZero(el) {
+  if (!el || !el.style) return;
+  if (el.style.opacity !== "0" || el.style.pointerEvents !== "none") {
+    el.style.setProperty("opacity", "0", "important");
+    el.style.setProperty("pointer-events", "none", "important");
+    // Also disable backdrop blocking if wrapped in a modal backdrop
+    const backdrop = el.closest('[class*="backdrop-"], [data-name="dialog-container"]');
+    if (backdrop && backdrop.style.pointerEvents !== "none") {
+      backdrop.style.setProperty("pointer-events", "none", "important");
+      backdrop.style.setProperty("opacity", "0", "important");
+    }
+  }
+}
+
+function hideAdsDetectDialog(node) {
+  if (node && node.nodeType === Node.ELEMENT_NODE) {
+    if (node.getAttribute('data-dialog-name') === 'gopro' || node.getAttribute('data-dialog-name') === 'gopro-feature-locked') {
+      setGoProElementOpacityZero(node);
+    } else {
+      const target = node.querySelector?.('[data-dialog-name="gopro"], [data-dialog-name="gopro-feature-locked"]');
+      if (target) setGoProElementOpacityZero(target);
+    }
+  }
 }
 
 // ── TV Alert Signal Catcher (Phase 1) ──
@@ -218,27 +260,37 @@ function parseTradingViewAlert(node) {
   }
 }
 
+// 3. Reactive Detection: MutationObserver for DOM changes and attribute changes
 const adObserver = new MutationObserver((mutations) => {
-  for (const mutation of mutations) {
-    if (mutation.addedNodes.length) {
+  for (let i = 0; i < mutations.length; i++) {
+    const mutation = mutations[i];
+    if (mutation.type === "childList" && mutation.addedNodes.length) {
       mutation.addedNodes.forEach(node => {
         hideAdsDetectDialog(node);
         parseTradingViewAlert(node);
       });
+    } else if (mutation.type === "attributes") {
+      hideAdsDetectDialog(mutation.target);
     }
   }
 });
 
-adObserver.observe(document.body || document.documentElement, { childList: true, subtree: true });
+adObserver.observe(document.body || document.documentElement, {
+  childList: true,
+  subtree: true,
+  attributes: true,
+  attributeFilter: ["data-dialog-name", "style", "class"]
+});
 
-// Check and hide gopro dialog every 2 seconds as fallback
-setInterval(() => {
-  const goproDialogs = document.querySelectorAll('div[data-dialog-name="gopro"]');
-  goproDialogs.forEach(el => {
-    if (el.style.display !== "none") {
-      el.style.display = "none";
-    }
-  });
-}, 2000);
+// 4. Active Polling Loop: Continuously checks every 250ms as an active safety net
+function enforceGoProDialogLoop() {
+  const goproDialogs = document.querySelectorAll('[data-dialog-name="gopro"], [data-dialog-name="gopro-feature-locked"]');
+  for (let i = 0; i < goproDialogs.length; i++) {
+    setGoProElementOpacityZero(goproDialogs[i]);
+  }
+}
+
+// Polling interval loop
+setInterval(enforceGoProDialogLoop, 250);
 
 injectWidget();

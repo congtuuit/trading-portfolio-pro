@@ -684,7 +684,84 @@ export function bindChatEvents(onSendChat, onClearChat, root = document) {
   }
 }
 
-export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root = document) {
+const GAS_CODE_SNIPPET = `// ==============================================================================
+// Trading Portfolio Pro - Google Apps Script Cloud Sync
+// ==============================================================================
+const SHEET_NAME = "Portfolio";
+const HEADERS = ["ID", "Symbol", "Type", "Quantity", "Entry Price", "Stop Loss", "Take Profit", "Note", "Date", "Updated At"];
+
+function getOrCreateSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
+  if (sheet.getLastRow() === 0 || sheet.getLastColumn() < HEADERS.length) {
+    sheet.clear();
+    const headerRange = sheet.getRange(1, 1, 1, HEADERS.length);
+    headerRange.setValues([HEADERS]);
+    headerRange.setBackground("#1e222d");
+    headerRange.setFontColor("#d1d4dc");
+    headerRange.setFontWeight("bold");
+    sheet.setFrozenRows(1);
+    for (let i = 1; i <= HEADERS.length; i++) sheet.setColumnWidth(i, 130);
+  }
+  return sheet;
+}
+
+function doGet(e) {
+  try {
+    const action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "pull";
+    if (action === "ping" || action === "test") {
+      const sheet = getOrCreateSheet();
+      return jsonResponse({ success: true, count: Math.max(0, sheet.getLastRow() - 1), message: "Connected successfully!" });
+    }
+    const sheet = getOrCreateSheet();
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return jsonResponse({ success: true, count: 0, data: [] });
+    const values = sheet.getRange(2, 1, lastRow - 1, HEADERS.length).getValues();
+    const portfolio = values.map(r => ({
+      id: String(r[0] || ""), symbol: String(r[1] || ""), type: String(r[2] || "BUY"),
+      quantity: Number(r[3]) || 0, entryPrice: Number(r[4]) || 0,
+      stopLoss: r[5] !== "" && r[5] !== null ? Number(r[5]) : null,
+      takeProfit: r[6] !== "" && r[6] !== null ? Number(r[6]) : null,
+      note: String(r[7] || ""), date: r[8] ? new Date(r[8]).getTime() : Date.now(),
+      tpAlerted: false, slAlerted: false, t0Alerted: false
+    })).filter(t => t.symbol);
+    return jsonResponse({ success: true, count: portfolio.length, data: portfolio });
+  } catch (err) {
+    return jsonResponse({ success: false, error: err.toString() });
+  }
+}
+
+function doPost(e) {
+  try {
+    let payload = JSON.parse(e.postData.contents);
+    let items = Array.isArray(payload) ? payload : (payload.data || payload.portfolio || []);
+    const sheet = getOrCreateSheet();
+    const lastRow = sheet.getLastRow();
+    if (lastRow > 1) sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).clearContent();
+    if (items.length > 0) {
+      const nowIso = new Date().toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+      const rows = items.map(t => [
+        t.id || ("trade_" + Date.now()), t.symbol || "", t.type || "BUY",
+        Number(t.quantity) || 0, Number(t.entryPrice) || 0,
+        t.stopLoss != null ? Number(t.stopLoss) : "",
+        t.takeProfit != null ? Number(t.takeProfit) : "",
+        t.note || "", t.date || Date.now(), nowIso
+      ]);
+      sheet.getRange(2, 1, rows.length, HEADERS.length).setValues(rows);
+    }
+    return jsonResponse({ success: true, count: items.length, message: "Synced successfully" });
+  } catch (err) {
+    return jsonResponse({ success: false, error: err.toString() });
+  }
+}
+
+function jsonResponse(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+`;
+
+export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root = document, syncHandlers = {}) {
   const btnSettings = root.querySelector("#btn-settings");
   const modalSettings = root.querySelector("#modal-settings");
   const btnCloseSettings = root.querySelector("#btn-close-modal-settings");
@@ -712,6 +789,21 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
       root.querySelector("#inp-tg-chatid").value = settings.tgChatId || "";
       root.querySelector("#chk-tg-enabled").checked = !!settings.tgEnabled;
 
+      // Load Google Sheets sync settings
+      const inpSheets = root.querySelector("#inp-sheets-url");
+      if (inpSheets) inpSheets.value = settings.sheetsUrl || "";
+      const chkAutoPush = root.querySelector("#chk-sheets-auto-push");
+      if (chkAutoPush) chkAutoPush.checked = !!settings.sheetsAutoPush;
+      const chkAutoPull = root.querySelector("#chk-sheets-auto-pull");
+      if (chkAutoPull) chkAutoPull.checked = !!settings.sheetsAutoPull;
+
+      const msgSheets = root.querySelector("#msg-sheets-status");
+      if (msgSheets) {
+        msgSheets.innerHTML = settings.sheetsUrl
+          ? `<span style="color:var(--profit);">Đã cấu hình Sheet. Nhấn Test 🔄 để kiểm tra hoặc Pull 📥 để đồng bộ.</span>`
+          : `Dùng để đồng bộ danh mục Cổ phiếu & Crypto khi đổi máy tính / trình duyệt mới.`;
+      }
+
       // Load Lookback Periods slider
       const sliderEl = root.querySelector("#inp-lookback");
       const displayEl = root.querySelector("#lookback-display");
@@ -727,6 +819,124 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
     });
     
     bindModalClose(root, "modal-settings", "btn-close-modal-settings");
+
+    // Modal view & copy Google Apps Script Code
+    const btnShowGas = root.querySelector("#btn-show-gas-code");
+    const modalGas = root.querySelector("#modal-gas-code");
+    if (btnShowGas && modalGas) {
+      btnShowGas.addEventListener("click", () => {
+        const txtGas = root.querySelector("#txt-gas-code");
+        if (txtGas) txtGas.value = GAS_CODE_SNIPPET;
+        toggleModal(root, "modal-gas-code", true);
+      });
+      bindModalClose(root, "modal-gas-code", "btn-close-modal-gas");
+
+      const btnCopyGas = root.querySelector("#btn-copy-gas-code");
+      if (btnCopyGas) {
+        btnCopyGas.addEventListener("click", () => {
+          const txtGas = root.querySelector("#txt-gas-code");
+          if (txtGas) {
+            navigator.clipboard.writeText(txtGas.value);
+            const orig = btnCopyGas.textContent;
+            btnCopyGas.textContent = "✅ Đã sao chép!";
+            setTimeout(() => { btnCopyGas.textContent = orig; }, 2000);
+          }
+        });
+      }
+    }
+
+    // Google Sheets Test Button
+    const btnTestSheets = root.querySelector("#btn-test-sheets");
+    if (btnTestSheets && syncHandlers.onTestSheets) {
+      btnTestSheets.addEventListener("click", async () => {
+        const url = root.querySelector("#inp-sheets-url").value.trim();
+        const msgEl = root.querySelector("#msg-sheets-status");
+        if (!url) {
+          if (msgEl) msgEl.innerHTML = `<span style="color:var(--loss);">Vui lòng nhập Google Apps Script URL trước khi Test!</span>`;
+          return;
+        }
+        btnTestSheets.textContent = "⏳...";
+        btnTestSheets.disabled = true;
+        if (msgEl) msgEl.innerHTML = `<span style="color:var(--text-muted);">Đang kết nối tới Google Apps Script...</span>`;
+        try {
+          const res = await syncHandlers.onTestSheets(url);
+          if (res.success) {
+            if (msgEl) msgEl.innerHTML = `<span style="color:var(--profit);">✅ Kết nối thành công! Trang tính đang có <strong>${res.count ?? 0}</strong> lệnh.</span>`;
+          } else {
+            if (msgEl) msgEl.innerHTML = `<span style="color:var(--loss);">❌ Lỗi: ${res.error || "Không thể kết nối"}</span>`;
+          }
+        } catch (err) {
+          if (msgEl) msgEl.innerHTML = `<span style="color:var(--loss);">❌ Lỗi: ${err.message}</span>`;
+        } finally {
+          btnTestSheets.textContent = "Test 🔄";
+          btnTestSheets.disabled = false;
+        }
+      });
+    }
+
+    // Google Sheets Pull Button
+    const btnPullSheets = root.querySelector("#btn-pull-sheets");
+    if (btnPullSheets && syncHandlers.onPullSheets) {
+      btnPullSheets.addEventListener("click", async () => {
+        const url = root.querySelector("#inp-sheets-url").value.trim();
+        const msgEl = root.querySelector("#msg-sheets-status");
+        if (!url) {
+          alert("Vui lòng nhập Google Apps Script URL trước khi Pull!");
+          return;
+        }
+        if (!confirm("Hành động này sẽ kéo toàn bộ danh mục từ Google Sheet về máy này và thay thế danh mục hiện tại. Bạn có muốn tiếp tục?")) {
+          return;
+        }
+        btnPullSheets.textContent = "⏳ Đang kéo...";
+        btnPullSheets.disabled = true;
+        try {
+          const res = await syncHandlers.onPullSheets(url);
+          if (res.success) {
+            alert(`✅ Đã kéo thành công ${res.count ?? 0} mã từ Google Sheet!`);
+            if (msgEl) msgEl.innerHTML = `<span style="color:var(--profit);">✅ Đã đồng bộ ${res.count ?? 0} mã vào Extension!</span>`;
+          } else {
+            alert(`❌ Lỗi kéo dữ liệu: ${res.error || "Không rõ nguyên nhân"}`);
+          }
+        } catch (err) {
+          alert("❌ Lỗi: " + err.message);
+        } finally {
+          btnPullSheets.textContent = "📥 Pull (Kéo từ Sheet về)";
+          btnPullSheets.disabled = false;
+        }
+      });
+    }
+
+    // Google Sheets Push Button
+    const btnPushSheets = root.querySelector("#btn-push-sheets");
+    if (btnPushSheets && syncHandlers.onPushSheets) {
+      btnPushSheets.addEventListener("click", async () => {
+        const url = root.querySelector("#inp-sheets-url").value.trim();
+        const msgEl = root.querySelector("#msg-sheets-status");
+        if (!url) {
+          alert("Vui lòng nhập Google Apps Script URL trước khi Push!");
+          return;
+        }
+        if (!confirm("Toàn bộ danh mục hiện tại trên máy này sẽ được tải lên và lưu vào Google Sheet. Tiếp tục?")) {
+          return;
+        }
+        btnPushSheets.textContent = "⏳ Đang đẩy...";
+        btnPushSheets.disabled = true;
+        try {
+          const res = await syncHandlers.onPushSheets(url);
+          if (res.success) {
+            alert(`✅ Đã lưu ${res.count ?? 0} mã lên Google Sheet thành công!`);
+            if (msgEl) msgEl.innerHTML = `<span style="color:var(--profit);">✅ Đã lưu ${res.count ?? 0} mã lên Google Sheet!</span>`;
+          } else {
+            alert(`❌ Lỗi đẩy dữ liệu: ${res.error || "Không rõ nguyên nhân"}`);
+          }
+        } catch (err) {
+          alert("❌ Lỗi: " + err.message);
+        } finally {
+          btnPushSheets.textContent = "📤 Push (Đẩy lên Sheet)";
+          btnPushSheets.disabled = false;
+        }
+      });
+    }
 
     const btnTestTg = root.querySelector("#btn-test-tg");
     if (btnTestTg) {
@@ -820,6 +1030,14 @@ export function bindSettingsEvents(settings, onSaveSettings, onFetchModels, root
       settings.tgToken = root.querySelector("#inp-tg-token").value.trim();
       settings.tgChatId = root.querySelector("#inp-tg-chatid").value.trim();
       settings.tgEnabled = root.querySelector("#chk-tg-enabled").checked;
+
+      // Save Google Sheets sync settings
+      const inpSheets = root.querySelector("#inp-sheets-url");
+      if (inpSheets) settings.sheetsUrl = inpSheets.value.trim();
+      const chkAutoPush = root.querySelector("#chk-sheets-auto-push");
+      if (chkAutoPush) settings.sheetsAutoPush = chkAutoPush.checked;
+      const chkAutoPull = root.querySelector("#chk-sheets-auto-pull");
+      if (chkAutoPull) settings.sheetsAutoPull = chkAutoPull.checked;
 
       // Save Lookback Periods
       const sliderEl = root.querySelector("#inp-lookback");

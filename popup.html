@@ -504,6 +504,49 @@
           </div>
         </div>
 
+        <!-- Google Sheets / Apps Script Cloud Sync -->
+        <div style="margin-top:16px; border-top:1px solid var(--border); padding-top:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <h4 style="margin:0; font-size:12px; color:var(--text-primary);">☁️ Đồng Bộ Cloud (Google Sheets / Apps Script)</h4>
+            <button id="btn-show-gas-code" class="btn" style="background:transparent; border:1px dashed var(--accent-blue); color:var(--accent-blue); padding:2px 8px; font-size:10px; border-radius:4px; cursor:pointer;" title="Lấy mã Apps Script dán vào Google Sheet">📋 Hướng Dẫn & Code.gs</button>
+          </div>
+          <div class="field">
+            <label>Google Apps Script Web App URL:</label>
+            <div style="display:flex; gap:8px;">
+              <input type="text" id="inp-sheets-url" class="full-width" style="padding:8px; font-family: monospace; font-size: 11px;"
+                placeholder="https://script.google.com/macros/s/.../exec" />
+              <button id="btn-test-sheets" class="btn"
+                style="background:var(--bg-hover); color:var(--text-primary); border:1px solid var(--border); padding:8px; white-space:nowrap;"
+                title="Kiểm tra kết nối tới Sheet">Test 🔄</button>
+            </div>
+            <i id="msg-sheets-status" style="color:var(--text-muted); font-size:11px; display:block; margin-top:4px;">Dùng để đồng bộ danh mục Cổ phiếu & Crypto khi đổi máy tính / trình duyệt mới.</i>
+          </div>
+
+          <div style="margin-top:10px; display:flex; gap:8px;">
+            <button id="btn-pull-sheets" class="btn full-width"
+              style="background:rgba(76,156,226,0.15); color:var(--accent-blue); border:1px solid var(--accent-blue); padding:7px; font-weight:600; font-size:11px; display:flex; align-items:center; justify-content:center; gap:4px;"
+              title="Kéo danh mục từ Sheet về Extension trên máy hiện tại">
+              📥 Pull (Kéo từ Sheet về)
+            </button>
+            <button id="btn-push-sheets" class="btn full-width"
+              style="background:rgba(38,166,154,0.15); color:var(--profit); border:1px solid var(--profit); padding:7px; font-weight:600; font-size:11px; display:flex; align-items:center; justify-content:center; gap:4px;"
+              title="Đẩy toàn bộ danh mục hiện tại lên Google Sheet">
+              📤 Push (Đẩy lên Sheet)
+            </button>
+          </div>
+
+          <div style="margin-top:10px; display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" id="chk-sheets-auto-push" style="cursor:pointer;" />
+              <label for="chk-sheets-auto-push" style="cursor:pointer; font-weight:normal; font-size:11px;">Tự động đồng bộ lên Sheet khi Thêm/Sửa/Xóa/Chốt lệnh</label>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" id="chk-sheets-auto-pull" style="cursor:pointer;" />
+              <label for="chk-sheets-auto-pull" style="cursor:pointer; font-weight:normal; font-size:11px;">Tự động kéo dữ liệu từ Sheet khi khởi động Extension</label>
+            </div>
+          </div>
+        </div>
+
         <div style="margin-top:20px; display:flex; gap:8px; justify-content:flex-end;">
           <button id="btn-clear-cache" class="btn"
             style="background:var(--bg-hover); color:var(--text-primary); border:1px solid var(--border); padding:8px 16px; font-size:11px;">🧹
@@ -512,6 +555,39 @@
             style="background:var(--accent-blue); color:white; padding:8px 16px; font-weight:bold;">Lưu Cấu
             Hình</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Google Apps Script Code & Guide -->
+  <div id="modal-gas-code" class="modal-overlay"
+    style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.7); z-index:250; align-items:center; justify-content:center; padding:16px;">
+    <div
+      style="background:var(--bg-card); border:1px solid var(--border); border-radius:8px; width:100%; max-width:480px; max-height:90vh; overflow-y:auto; box-shadow:0 10px 30px rgba(0,0,0,0.8); display:flex; flex-direction:column;">
+      <div
+        style="padding:12px 16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+        <h3 style="margin:0; font-size:14px; color:var(--text-primary);">📋 Hướng Dẫn Đồng Bộ Google Sheet</h3>
+        <button id="btn-close-modal-gas"
+          style="background:transparent; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0; line-height:1;">&times;</button>
+      </div>
+      <div style="padding:16px; font-size:12px; line-height:1.6; color:var(--text-primary);">
+        <ol style="margin:0 0 12px 0; padding-left:18px;">
+          <li>Tạo trang tính Google Sheet mới tại: <a href="https://sheets.new" target="_blank" style="color:var(--accent-blue);">sheets.new</a></li>
+          <li>Vào menu: <strong>Tiện ích mở rộng (Extensions)</strong> &rarr; <strong>Apps Script</strong>.</li>
+          <li>Xóa sạch code mặc định, dán đoạn mã bên dưới vào file <code>Code.gs</code> rồi bấm <strong>Lưu (Ctrl+S / Cmd+S)</strong>.</li>
+          <li>Bấm <strong>Triển khai (Deploy)</strong> &rarr; <strong>Tùy chọn triển khai mới (New deployment)</strong>.</li>
+          <li>Chọn loại <strong>Ứng dụng web (Web app)</strong>.</li>
+          <li>Mục <em>Ai có quyền truy cập (Who has access)</em>: chọn <strong>Bất kỳ ai (Anyone)</strong>. Bấm <strong>Triển khai</strong>.</li>
+          <li>Copy <strong>URL Ứng dụng web</strong> (có đuôi <code>/exec</code>) và dán vào ô cài đặt trên Extension.</li>
+        </ol>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <strong style="font-size:11px; color:var(--text-muted);">Mã nguồn Apps Script (Code.gs):</strong>
+          <button id="btn-copy-gas-code" class="btn"
+            style="background:var(--accent-blue); color:white; padding:4px 10px; font-size:11px; border-radius:4px;">📋 Sao chép Code</button>
+        </div>
+        <textarea id="txt-gas-code" readonly
+          style="width:100%; height:180px; font-family:monospace; font-size:10px; background:var(--bg-input); color:var(--text-primary); border:1px solid var(--border); border-radius:4px; padding:8px; box-sizing:border-box; resize:vertical;"></textarea>
       </div>
     </div>
   </div>
