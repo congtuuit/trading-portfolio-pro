@@ -3,6 +3,7 @@
  * Handles AI API integrations (Gemini, OpenAI)
  */
 import { getAdviceCache, saveAdviceCache, addSystemLog } from "./storage.js";
+import { prepareDataForAI } from "./scanner_data.js";
 
 export async function queryAI(inputData, settings) {
   if (!settings.apiKey) {
@@ -63,29 +64,10 @@ export async function screenPotentialStocks(rawStocks, targetProfit, settings, a
     const riskLabel = profile.risk_level === "cao" ? "CHẤP NHẬN RỦI RO CAO (ưu tiên lợi nhuận, chấp nhận biến động mạnh)" :
       profile.risk_level === "thấp" ? "AN TOÀN (ưu tiên bảo toàn vốn)" : "TRUNG BÌNH (cân bằng rủi ro-lợi nhuận)";
 
-    // 2. Build compact but enriched data with anti-overbought indicators
-    const compactData = rawStocks.map(s => ({
-      s: s.s || s.symbol,
-      p: s.p || s.price,
-      o: s.o || s.open || s.p || s.price,
-      c: s.c || s.changePercent,
-      v: s.v || s.volume,
-      rsi: s.rsi,
-      atr: s.atr,
-      e20: s.e20,
-      e50: s.e50,
-      e200: s.e200,
-      bl: s.bl,
-      bu: s.bu,
-      bbp: s.bbp !== undefined ? s.bbp : (s.bu - s.bl > 0 ? Math.round(((s.p - s.bl) / (s.bu - s.bl)) * 100) : 50),
-      ed20: s.ed20 !== undefined ? s.ed20 : (s.e20 > 0 ? parseFloat((((s.p - s.e20) / s.e20) * 100).toFixed(1)) : 0),
-      up: s.up !== undefined ? s.up : (s.bu > s.p ? parseFloat((((s.bu - s.p) / s.p) * 100).toFixed(1)) : 0),
-      m: s.m,
-      vr: s.vr,
-      pat: s.pat || (s._pattern ? s._pattern.label : undefined),
-      sc: s.sc !== undefined ? s.sc : (s._score || 0),
-      g: s.g || s._grade || "N/A"
-    }));
+    // 2. Build compact but enriched data for AI
+    const compactData = (rawStocks.length > 0 && rawStocks[0].s && rawStocks[0].bbp !== undefined)
+      ? rawStocks
+      : prepareDataForAI(rawStocks);
 
     const cleanedData = JSON.stringify(compactData);
 

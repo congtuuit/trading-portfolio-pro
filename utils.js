@@ -166,8 +166,9 @@ export function detectCandlePattern(s) {
   const open = (s.open !== undefined && s.open !== null && s.open > 0)
     ? s.open
     : (change !== 0 ? close / (1 + change / 100) : close);
-  const high = s.high || Math.max(open, close);
-  const low = s.low || Math.min(open, close);
+  const high = Math.max(s.high !== undefined && s.high !== null ? s.high : 0, open, close);
+  const lowCandidate = (s.low !== undefined && s.low !== null && s.low > 0) ? s.low : Math.min(open, close);
+  const low = Math.min(lowCandidate, open, close);
 
   const bodySize = Math.abs(close - open);
   const isBull = close >= open;
@@ -176,6 +177,11 @@ export function detectCandlePattern(s) {
   const totalRange = high - low;
 
   if (totalRange === 0) return { pattern: "Normal", isBullish: true, icon: "🕯️", label: "Nến Thường" };
+
+  // Doji (Lưỡng lự, thân nến cực nhỏ so với biên độ)
+  if (bodySize <= totalRange * 0.12) {
+    return { pattern: "Doji", isBullish: true, icon: "⚖️", label: "Lưỡng Lự Doji" };
+  }
 
   // Hammer / Pinbar rút chân (râu dưới dài, râu trên ngắn)
   if (lowerWick >= bodySize * 1.8 && upperWick <= bodySize * 0.6 && lowerWick >= totalRange * 0.45) {
@@ -187,8 +193,8 @@ export function detectCandlePattern(s) {
     return { pattern: "ShootingStar", isBullish: false, icon: "☄️", label: "Bắn Sao (Áp Lực Bán)" };
   }
 
-  // Cụt đầu / Áp lực bán mạnh (râu trên dài hơn 50% tổng biên độ nến)
-  if (upperWick >= totalRange * 0.5 && upperWick > bodySize) {
+  // Cụt đầu / Áp lực bán mạnh (râu trên dài hơn 50% tổng biên độ nến, râu dưới ngắn)
+  if (upperWick >= totalRange * 0.5 && upperWick > bodySize && lowerWick <= totalRange * 0.25) {
     return { pattern: "UpperShadow", isBullish: false, icon: "⚠️", label: "Cụt Đầu (Bán Mạnh)" };
   }
 
@@ -205,11 +211,6 @@ export function detectCandlePattern(s) {
   // Bullish Candle / Nến tăng đẹp
   if (isBull && change >= 1.2 && bodySize > totalRange * 0.5) {
     return { pattern: "BullishCandle", isBullish: true, icon: "🟢", label: "Nến Tăng Đẹp" };
-  }
-
-  // Doji
-  if (bodySize <= totalRange * 0.12) {
-    return { pattern: "Doji", isBullish: true, icon: "⚖️", label: "Lưỡng Lự Doji" };
   }
 
   return { pattern: isBull ? "Bull" : "Bear", isBullish: isBull, icon: isBull ? "📈" : "📉", label: isBull ? "Tăng Nhẹ" : "Điều Chỉnh" };
@@ -253,7 +254,8 @@ export function calculateProbability(s, profile = {}) {
   if (style === "lướt sóng") {
     // Với lướt sóng: Ưu tiên động lượng đang phát triển, không bắt dao rơi downtrend
     if (rsi >= 50 && rsi <= 65) bullProb += 8.0; // Vùng bứt phá lý tưởng
-    else if (rsi > 65 && rsi <= 72) bullProb += 4.0;
+    else if (rsi > 65 && rsi <= 70) bullProb += 4.0;
+    else if (rsi > 70 && rsi <= 75) bullProb -= 2.0; // Bắt đầu nóng
     else if (rsi > 75) bullProb -= 12.0; // Quá mua nặng, rủi ro T+2.5
     else if (rsi <= 35) {
       if (isUptrend || priceAboveEma200) bullProb += 3.0; // Pullback trong xu hướng lớn

@@ -132,8 +132,8 @@ export async function scanVietnamStocks() {
 
     // Lọc bỏ cổ phiếu penny rác dưới 3,000đ hoặc thanh khoản giá trị quá nhỏ (< 500 triệu VNĐ)
     return mapped.filter(s => {
-      if (s.price && s.price < 3000) return false;
-      if (s.tradeValue && s.tradeValue < 500000000) return false;
+      if (!s.price || s.price < 3000) return false;
+      if (!s.tradeValue || s.tradeValue < 500000000) return false;
       return true;
     });
 

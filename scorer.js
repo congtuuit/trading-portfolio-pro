@@ -27,8 +27,6 @@ export function scoreStock(s, profile = {}) {
   const macdSignal = s.macdSignal || s.macd_signal || 0;
   const vol = s.volume || 0;
   const volAvg = s.avgVolume10d || 1;
-  const high = s.high || price;
-  const low = s.low || price;
   const change = s.changePercent || 0;
 
   const isCrypto = s.type === "crypto" || s.subtype === "crypto";
@@ -88,8 +86,9 @@ export function scoreStock(s, profile = {}) {
     if (ema20Dist >= -1.0 && ema20Dist <= 2.2 && volRatio >= 1.2 && change >= 1.0) {
       trendScore += 6;
     }
-    // Thưởng điểm nến Pinbar rút chân test EMA20/50 thành công
-    if (pattern.pattern === "Hammer" && ema20Dist >= -2.0 && ema20Dist <= 2.0) {
+    // Thưởng điểm nến Pinbar rút chân test EMA20 hoặc EMA50 thành công
+    const isNearSupport = (ema20Dist >= -2.0 && ema20Dist <= 2.0) || (ema50Dist >= -2.0 && ema50Dist <= 2.0);
+    if (pattern.pattern === "Hammer" && isNearSupport) {
       trendScore += 4;
     }
 
@@ -260,20 +259,17 @@ export function scoreStock(s, profile = {}) {
 
   // Projected sessions based on trading style
   let projectedSessions;
-  if (style === "lướt sóng") projectedSessions = "T+3 ~ T+5 phiên";
-  else if (style === "swing") projectedSessions = "5-10 phiên";
-  else projectedSessions = "20-50 phiên";
+  if (style === "lướt sóng") projectedSessions = isCrypto ? "1-3 ngày" : "T+3 ~ T+5 phiên";
+  else if (style === "swing") projectedSessions = isCrypto ? "3-7 ngày" : "5-10 phiên";
+  else projectedSessions = isCrypto ? "15-45 ngày" : "20-50 phiên";
 
   // ── BREAKOUT & RESISTANCE DISTANCE ──
-  // Xác định kháng cự gần nhất: Dải BB Upper hoặc các mốc EMA50/EMA200 nếu giá đang nằm dưới
-  let nearestResistance = bbUpper && bbUpper > price ? bbUpper : price * 1.05;
-  if (ema50 > price && ema50 < nearestResistance) nearestResistance = ema50;
-  if (ema200 > price && ema200 < nearestResistance) nearestResistance = ema200;
-
-  const breakoutPct = ((nearestResistance - price) / price) * 100;
+  // Kháng cự kỹ thuật ngắn hạn dựa trên dải BB Upper
+  const nearestResistance = bbUpper > 0 ? bbUpper : (price * 1.05);
+  const breakoutPct = price > 0 ? ((nearestResistance - price) / price) * 100 : 0;
   const breakoutScoreVal = Math.round(breakoutPct * 10) / 10;
   const isNearResistance = breakoutPct < 2.5 || bbPct > 85;
-  const isBreakingOut = price > ema20 && breakoutPct < 1.5 && bbPct <= 85;
+  const isBreakingOut = isUptrend && breakoutPct >= -0.5 && breakoutPct < 1.5 && bbPct <= 85;
 
   // ── PINE SCRIPT V5.5 INTEGRATIONS ──
   const confluence = calculateConfluenceScore(s, profile);
