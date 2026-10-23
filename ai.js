@@ -67,6 +67,7 @@ export async function screenPotentialStocks(rawStocks, targetProfit, settings, a
     const compactData = rawStocks.map(s => ({
       s: s.s || s.symbol,
       p: s.p || s.price,
+      o: s.o || s.open || s.p || s.price,
       c: s.c || s.changePercent,
       v: s.v || s.volume,
       rsi: s.rsi,
@@ -81,8 +82,9 @@ export async function screenPotentialStocks(rawStocks, targetProfit, settings, a
       up: s.up !== undefined ? s.up : (s.bu > s.p ? parseFloat((((s.bu - s.p) / s.p) * 100).toFixed(1)) : 0),
       m: s.m,
       vr: s.vr,
-      sc: s.sc,
-      g: s.g
+      pat: s.pat || (s._pattern ? s._pattern.label : undefined),
+      sc: s.sc !== undefined ? s.sc : (s._score || 0),
+      g: s.g || s._grade || "N/A"
     }));
 
     const cleanedData = JSON.stringify(compactData);
@@ -113,18 +115,22 @@ ${cleanedData}
 
 Hồ sơ NĐT: ${styleLabel} | ${riskLabel}
 
-QUY TẮC CHỌN LỌC KỸ THUẬT (CHỐNG ĐU ĐỈNH / QUÁ MUA):
+QUY TẮC CHỌN LỌC KỸ THUẬT (CHỐNG ĐU ĐỈNH / QUÁ MUA & BẢO VỆ CHU KỲ T+2.5):
 1. TUYỆT ĐỐI KHÔNG CHỌN:
    - Cổ phiếu đã chạm hoặc vượt dải trên Bollinger Bands (bbp >= 85 hoặc dư địa up < 2.5%).
    - Cổ phiếu bị kéo giãn quá xa đường EMA20 (ed20 > 3.5%).
+   - Cổ phiếu có nến Bắn Sao / Cụt Đầu / Áp lực xả hàng mạnh (pat có "Bắn Sao" hoặc "Cụt Đầu" hoặc "Áp Lực Xả") hoặc nổ vol nhưng không tăng được giá (phân phối).
    - Cổ phiếu có RSI quá mua (rsi > 68 với Swing/Dài hạn, rsi > 75 với Lướt sóng).
    - Cổ phiếu có MACD cắt xuống (m = "DOWN") trừ khi đang ở hỗ trợ cứng EMA200/BB Lower và bật tăng.
-2. ƯU TIÊN CHỌN VÙNG MUA VÀNG (Sweet Buy Zone / Healthy Pullback):
-   - Cổ phiếu Pullback hoặc tích lũy lành mạnh sát EMA20/EMA50 (ed20 từ -1% đến +2%), RSI 48-60, bbp 30-70, MACD hướng lên (m = "UP"), còn nhiều dư địa tăng (up >= 5%).
-   - Thiết lập giao dịch có tỷ lệ Risk/Reward (R:R) tối thiểu 1:2.
+2. ƯU TIÊN CHỌN VÙNG MUA VÀNG (Sweet Buy Zone / Pocket Pivot / Pullback):
+   - Cổ phiếu Pullback lành mạnh sát EMA20/EMA50 (ed20 từ -1% đến +2%), RSI 48-62, bbp 30-70, MACD hướng lên (m = "UP"), còn nhiều dư địa tăng (up >= 5%).
+   - Cổ phiếu có nến Pinbar rút chân hoặc Lực đẩy mạnh từ nền tích lũy.
+   - Thiết lập giao dịch có tỷ lệ Risk/Reward (R:R) tối thiểu 1:2 và an toàn với chu kỳ hàng về T+2.5.
+
+Lưu ý quan trọng về giá: Các mức giá vào (e), mục tiêu (t), cắt lỗ (sl) phải khớp với định dạng giá thực tế của cổ phiếu (Ví dụ: 14500, 26800, 85000). Không chia giá cho 1000.
 
 CHỈ trả về JSON array thuần (KHÔNG markdown, KHÔNG giải thích):
-[{"s":"Mã","r":"Lý do ngắn gọn","sc":8.5,"d":"3-5","e":14500,"t":16000,"sl":13800,"w":75}]`;
+[{"s":"Mã","r":"Lý do ngắn gọn","sc":8.5,"d":"T+3~5","e":14500,"t":16000,"sl":13800,"w":75}]`;
 
 
     const systemPrompt = isCrypto ?

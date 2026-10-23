@@ -162,7 +162,10 @@ export function calculatePositionSize(entry, stoploss, accountBalance = 10000000
 export function detectCandlePattern(s) {
   const close = s.price || s.close || 0;
   const change = s.changePercent || 0;
-  const open = s.open || (change !== 0 ? close / (1 + change / 100) : close);
+  // Ưu tiên dùng giá mở cửa thực tế nếu scanner có cung cấp
+  const open = (s.open !== undefined && s.open !== null && s.open > 0)
+    ? s.open
+    : (change !== 0 ? close / (1 + change / 100) : close);
   const high = s.high || Math.max(open, close);
   const low = s.low || Math.min(open, close);
 
@@ -174,28 +177,38 @@ export function detectCandlePattern(s) {
 
   if (totalRange === 0) return { pattern: "Normal", isBullish: true, icon: "🕯️", label: "Nến Thường" };
 
-  // Hammer / Pinbar rút chân
-  if (lowerWick >= bodySize * 2.0 && upperWick <= bodySize * 0.5 && lowerWick > totalRange * 0.5) {
+  // Hammer / Pinbar rút chân (râu dưới dài, râu trên ngắn)
+  if (lowerWick >= bodySize * 1.8 && upperWick <= bodySize * 0.6 && lowerWick >= totalRange * 0.45) {
     return { pattern: "Hammer", isBullish: true, icon: "🔨", label: "Pinbar Rút Chân" };
   }
 
-  // Shooting Star
-  if (upperWick >= bodySize * 2.0 && lowerWick <= bodySize * 0.5 && upperWick > totalRange * 0.5) {
+  // Shooting Star / Bắn Sao (áp lực bán chốt lời cụt đầu)
+  if (upperWick >= bodySize * 1.8 && lowerWick <= bodySize * 0.6 && upperWick >= totalRange * 0.45) {
     return { pattern: "ShootingStar", isBullish: false, icon: "☄️", label: "Bắn Sao (Áp Lực Bán)" };
   }
 
-  // Marubozu / Lực đẩy mạnh
-  if (bodySize >= totalRange * 0.8 && change > 2.5) {
+  // Cụt đầu / Áp lực bán mạnh (râu trên dài hơn 50% tổng biên độ nến)
+  if (upperWick >= totalRange * 0.5 && upperWick > bodySize) {
+    return { pattern: "UpperShadow", isBullish: false, icon: "⚠️", label: "Cụt Đầu (Bán Mạnh)" };
+  }
+
+  // Marubozu Tăng / Lực đẩy mạnh (thân nến tăng áp đảo, không có râu)
+  if (isBull && bodySize >= totalRange * 0.75 && change > 2.0) {
     return { pattern: "BullishMarubozu", isBullish: true, icon: "🚀", label: "Lực Đẩy Mạnh" };
   }
 
-  // Bullish Engulfing / Tăng tốt
-  if (isBull && change >= 1.5 && bodySize > totalRange * 0.6) {
+  // Marubozu Giảm / Bị xả hàng mạnh
+  if (!isBull && bodySize >= totalRange * 0.75 && (change < -2.0 || close < open * 0.98)) {
+    return { pattern: "BearishMarubozu", isBullish: false, icon: "🩸", label: "Áp Lực Xả Mạnh" };
+  }
+
+  // Bullish Candle / Nến tăng đẹp
+  if (isBull && change >= 1.2 && bodySize > totalRange * 0.5) {
     return { pattern: "BullishCandle", isBullish: true, icon: "🟢", label: "Nến Tăng Đẹp" };
   }
 
   // Doji
-  if (bodySize <= totalRange * 0.1) {
+  if (bodySize <= totalRange * 0.12) {
     return { pattern: "Doji", isBullish: true, icon: "⚖️", label: "Lưỡng Lự Doji" };
   }
 
@@ -218,6 +231,7 @@ export function calculateProbability(s, profile = {}) {
   const bbUpper = s.bb_upper || 0;
   const macd = s.macd || 0;
   const macdSignal = s.macdSignal || s.macd_signal || 0;
+  const style = profile.tradingStyle || profile.trading_style || "swing";
 
   const isUptrend = price > ema20 && ema20 > ema50;
   const priceAboveEma200 = price > ema200;
@@ -236,12 +250,24 @@ export function calculateProbability(s, profile = {}) {
   if (isMACDBullish) bullProb += 7.0;
   else bullProb -= 7.0;
 
-  if (rsi <= 35) bullProb += 8.0; // Oversold
-  else if (rsi >= 48 && rsi <= 62) bullProb += 6.0; // Healthy momentum
-  else if (rsi >= 70) bullProb -= 10.0; // Overbought
+  if (style === "lướt sóng") {
+    // Với lướt sóng: Ưu tiên động lượng đang phát triển, không bắt dao rơi downtrend
+    if (rsi >= 50 && rsi <= 65) bullProb += 8.0; // Vùng bứt phá lý tưởng
+    else if (rsi > 65 && rsi <= 72) bullProb += 4.0;
+    else if (rsi > 75) bullProb -= 12.0; // Quá mua nặng, rủi ro T+2.5
+    else if (rsi <= 35) {
+      if (isUptrend || priceAboveEma200) bullProb += 3.0; // Pullback trong xu hướng lớn
+      else bullProb -= 8.0; // Đang rơi tự do trong downtrend -> Phạt nặng
+    }
+  } else {
+    // Swing hoặc dài hạn
+    if (rsi <= 35) bullProb += 8.0; // Vùng gom quá bán
+    else if (rsi >= 48 && rsi <= 62) bullProb += 6.0;
+    else if (rsi >= 70) bullProb -= 10.0;
+  }
 
-  if (bbPct <= 25) bullProb += 6.0; // Bottom BB
-  else if (bbPct >= 85) bullProb -= 8.0; // Top BB
+  if (bbPct <= 25) bullProb += (style === "lướt sóng" && !isUptrend ? 0 : 6.0);
+  else if (bbPct >= 85) bullProb -= 8.0; // Sát cản trên
 
   // Clamping
   bullProb = Math.min(88.0, Math.max(15.0, Math.round(bullProb)));

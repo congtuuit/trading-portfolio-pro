@@ -33,6 +33,8 @@ export function scoreStock(s, profile = {}) {
 
   const isCrypto = s.type === "crypto" || s.subtype === "crypto";
   const signals = [];
+  const volRatio = volAvg > 0 ? (vol / volAvg) : 1;
+  const pattern = detectCandlePattern(s);
 
   // Key relative distances
   const ema20Dist = ema20 > 0 ? ((price - ema20) / ema20) * 100 : 0;
@@ -76,11 +78,21 @@ export function scoreStock(s, profile = {}) {
 
     if (isDowntrend) trendScore -= (priceAboveEma200 ? 5 : 15);
   } else {
-    // Lướt sóng (Scalping)
+    // Lướt sóng (Scalping / T+ Việt Nam)
     if (price > ema20) trendScore += 10;
-    if (isMACDBullish) trendScore += 8;
-    if (change > 0 && change < 5.0) trendScore += 6;
-    if (isUptrend) trendScore += 6;
+    if (isMACDBullish) trendScore += 7;
+    if (change > 0 && change < 5.0) trendScore += 5;
+    if (isUptrend) trendScore += 5;
+
+    // Thưởng điểm Pocket Pivot: Bùng nổ từ nền tích lũy sát EMA20 (-1% đến +2.2%) kèm Vol xác nhận
+    if (ema20Dist >= -1.0 && ema20Dist <= 2.2 && volRatio >= 1.2 && change >= 1.0) {
+      trendScore += 6;
+    }
+    // Thưởng điểm nến Pinbar rút chân test EMA20/50 thành công
+    if (pattern.pattern === "Hammer" && ema20Dist >= -2.0 && ema20Dist <= 2.0) {
+      trendScore += 4;
+    }
+
     if (isDowntrend) trendScore -= 12;
   }
   trendScore = Math.max(0, Math.min(30, trendScore));
@@ -126,6 +138,11 @@ export function scoreStock(s, profile = {}) {
     if (isMACDBullish) momentumScore += 6;
     if (bbPct >= 45 && bbPct <= 85) momentumScore += 7;
     else if (bbPct > 90) momentumScore -= 8;
+
+    // Phạt áp lực bán cụt đầu hoặc shooting star (nguy cơ bẫy bulltrap)
+    if (pattern.pattern === "ShootingStar" || pattern.pattern === "UpperShadow") {
+      momentumScore -= 6;
+    }
   }
 
   // Phạt bổ sung nếu giá vượt hẳn ra ngoài dải Bollinger Upper (Price > bbUpper)
@@ -138,7 +155,6 @@ export function scoreStock(s, profile = {}) {
 
   // ── 3. VOLUME CONFIRMATION & CLIMAX DETECTION (0-20 pts) ──
   let volumeScore = 0;
-  const volRatio = vol / volAvg;
 
   if (isCrypto) {
     volumeScore += 8; // Base liquidity for top crypto
@@ -244,12 +260,16 @@ export function scoreStock(s, profile = {}) {
 
   // Projected sessions based on trading style
   let projectedSessions;
-  if (style === "lướt sóng") projectedSessions = "1-3 phiên";
+  if (style === "lướt sóng") projectedSessions = "T+3 ~ T+5 phiên";
   else if (style === "swing") projectedSessions = "5-10 phiên";
   else projectedSessions = "20-50 phiên";
 
   // ── BREAKOUT & RESISTANCE DISTANCE ──
-  const nearestResistance = Math.min(bbUpper || price * 1.05, high * 1.02 || price * 1.05);
+  // Xác định kháng cự gần nhất: Dải BB Upper hoặc các mốc EMA50/EMA200 nếu giá đang nằm dưới
+  let nearestResistance = bbUpper && bbUpper > price ? bbUpper : price * 1.05;
+  if (ema50 > price && ema50 < nearestResistance) nearestResistance = ema50;
+  if (ema200 > price && ema200 < nearestResistance) nearestResistance = ema200;
+
   const breakoutPct = ((nearestResistance - price) / price) * 100;
   const breakoutScoreVal = Math.round(breakoutPct * 10) / 10;
   const isNearResistance = breakoutPct < 2.5 || bbPct > 85;
@@ -258,7 +278,6 @@ export function scoreStock(s, profile = {}) {
   // ── PINE SCRIPT V5.5 INTEGRATIONS ──
   const confluence = calculateConfluenceScore(s, profile);
   const probability = calculateProbability(s, profile);
-  const pattern = detectCandlePattern(s);
 
   return {
     score: totalScore,

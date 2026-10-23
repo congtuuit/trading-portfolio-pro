@@ -48,7 +48,9 @@ export async function scanVietnamStocks() {
       "pricescale",
       "minmov",
       "fractional",
-      "minmove2"
+      "minmove2",
+      "open",
+      "Value.Traded"
     ],
     sort: { sortBy: "volume", sortOrder: "desc" },
     range: [0, 150]
@@ -69,11 +71,14 @@ export async function scanVietnamStocks() {
     const json = await res.json();
     if (!json?.data) return [];
 
-    return json.data.map(item => {
+    const mapped = json.data.map(item => {
       const d = item.d || [];
 
       const tickerFull = item.s;          // HOSE:NVL
       const [exchange, symbol] = tickerFull.split(":");
+      const price = d[1] || 0;
+      const volume = d[4] || 0;
+      const tradeValue = d[26] || (price * volume);
 
       return {
         // ===== IDENTIFY =====
@@ -83,14 +88,16 @@ export async function scanVietnamStocks() {
 
         // ===== BASIC =====
         name: d[0],
-        price: d[1],
+        price: price,
+        open: d[25] !== undefined && d[25] !== null ? d[25] : null,
         changePercent: d[2],
         changeValue: d[3],
 
         // ===== LIQUIDITY =====
-        volume: d[4],
+        volume: volume,
         avgVolume10d: d[5],
-        relativeVolume: d[5] ? d[4] / d[5] : null,
+        relativeVolume: d[5] ? volume / d[5] : null,
+        tradeValue: tradeValue,
 
         // ===== TECHNICAL =====
         rsi: d[6],
@@ -121,6 +128,13 @@ export async function scanVietnamStocks() {
         isMACDBullish: d[13] > d[14],
         isRSIHot: d[6] > 70
       };
+    });
+
+    // Lọc bỏ cổ phiếu penny rác dưới 3,000đ hoặc thanh khoản giá trị quá nhỏ (< 500 triệu VNĐ)
+    return mapped.filter(s => {
+      if (s.price && s.price < 3000) return false;
+      if (s.tradeValue && s.tradeValue < 500000000) return false;
+      return true;
     });
 
   } catch (err) {
@@ -201,7 +215,9 @@ export async function scanCryptoCoins() {
       "pricescale",
       "minmov",
       "fractional",
-      "minmove2"
+      "minmove2",
+      "open",
+      "Value.Traded"
     ]
   };
 
@@ -225,6 +241,9 @@ export async function scanCryptoCoins() {
 
       const tickerFull = item.s;          // BINANCE:BTCUSDT
       const [exchange, symbol] = tickerFull.split(":");
+      const price = d[1] || 0;
+      const volume = d[4] || 0;
+      const tradeValue = d[26] || (price * volume);
 
       return {
         // ===== IDENTIFY =====
@@ -234,14 +253,16 @@ export async function scanCryptoCoins() {
 
         // ===== BASIC =====
         name: d[0],
-        price: d[1],
+        price: price,
+        open: d[25] !== undefined && d[25] !== null ? d[25] : null,
         changePercent: d[2],
         changeValue: d[3],
 
         // ===== LIQUIDITY =====
-        volume: d[4],
+        volume: volume,
         avgVolume10d: d[5],
-        relativeVolume: d[5] ? d[4] / d[5] : null,
+        relativeVolume: d[5] ? volume / d[5] : null,
+        tradeValue: tradeValue,
 
         // ===== TECHNICAL =====
         rsi: d[6],
@@ -296,6 +317,7 @@ export function prepareDataForAI(rawStocks) {
     return {
       s: s.symbol || s.s || s.name || "UNK",
       p: p,
+      o: s.open !== undefined && s.open !== null ? s.open : p,
       c: (s.changePercent || 0).toFixed(2),
       v: ((s.volume || 0) / 1000000).toFixed(1) + "M",
       rsi: Math.round(s.rsi || 0),
@@ -312,6 +334,7 @@ export function prepareDataForAI(rawStocks) {
       vr: s.avgVolume10d > 0 ? (s.volume / s.avgVolume10d).toFixed(1) : "0.0",
       hi: s.high ? Math.round(s.high) : 0,
       lo: s.low ? Math.round(s.low) : 0,
+      pat: s._pattern ? s._pattern.label : undefined,
       sc: s._score || 0,
       g: s._grade || "N/A"
     };
